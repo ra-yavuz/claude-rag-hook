@@ -292,9 +292,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("daemon", help="Inspect / control the warm embedder daemon")
     sub2 = sp.add_subparsers(dest="dcmd", required=True)
-    sp2 = sub2.add_parser("status"); sp2.set_defaults(func=cmd_daemon_status)
-    sp2 = sub2.add_parser("start");  sp2.set_defaults(func=cmd_daemon_start)
-    sp2 = sub2.add_parser("stop");   sp2.set_defaults(func=cmd_daemon_stop)
+    sub2.add_parser("status").set_defaults(func=cmd_daemon_status)
+    sub2.add_parser("start").set_defaults(func=cmd_daemon_start)
+    sub2.add_parser("stop").set_defaults(func=cmd_daemon_stop)
 
     sp = sub.add_parser("version", help="Print version")
     sp.set_defaults(func=cmd_version)
