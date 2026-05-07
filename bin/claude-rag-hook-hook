@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-# claude-rag-hookd: warm embedder daemon. Auto-spawned by the hook on
-# first retrieval; not on $PATH.
+# claude-rag-hook-hook: the UserPromptSubmit hook entrypoint that
+# Claude Code invokes via /etc/claude-code/managed-settings.json.
+#
+# Not on $PATH. Lives at /usr/lib/claude-rag-hook/claude-rag-hook-hook.
+# End users never invoke this directly; Claude Code does.
 
 import os
 import sys
@@ -22,7 +25,7 @@ def _bootstrap_sys_path() -> None:
 
 _bootstrap_sys_path()
 
-from claude_rag_hook.daemon import main  # noqa: E402
+from claude_rag_hook.hook import main  # noqa: E402
 
 if __name__ == "__main__":
     raise SystemExit(main())

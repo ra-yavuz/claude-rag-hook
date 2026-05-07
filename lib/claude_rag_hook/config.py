@@ -22,7 +22,7 @@ DEFAULTS: dict[str, Any] = {
     "top_k": 5,
     "embedder": {
         "kind": "fastembed",
-        "model": "nomic-embed-text-v1.5",
+        "model": "nomic-ai/nomic-embed-text-v1.5",
         "query_prefix": "search_query: ",
         "document_prefix": "search_document: ",
         "base_url": "http://127.0.0.1:19080",

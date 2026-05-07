@@ -1,14 +1,27 @@
 #!/bin/sh
 # postinst for claude-rag-hook
+#
+# Wires the hook into Claude Code by merging an entry into
+# /etc/claude-code/managed-settings.json. That file is read by Claude
+# Code for every user on the machine, with the highest precedence in
+# the settings layer, so this is true zero-touch: install the package,
+# every user gets the hook on their next Claude Code session.
+#
+# We do not edit any per-user ~/.claude/settings.json. Per-user files
+# belong to the user; package code does not write to them.
 set -e
+
+ADMIN=/usr/lib/claude-rag-hook/claude-rag-hook-admin
+HOOK=/usr/lib/claude-rag-hook/claude-rag-hook-hook
 
 case "$1" in
     configure)
-        # Nothing to enable or start. The hook is wired into Claude Code
-        # by the user with `claude-rag-hook install`, since it modifies
-        # the user's ~/.claude/settings.json (a per-user file we do not
-        # touch from the package). We do not enable a system service.
-        :
+        if [ -x "$ADMIN" ]; then
+            # Idempotent: install merges, does not duplicate.
+            "$ADMIN" install --command "$HOOK" \
+                --settings /etc/claude-code/managed-settings.json \
+                || echo "claude-rag-hook: failed to wire hook into managed-settings.json (will be retried on next reconfigure)" >&2
+        fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
         ;;

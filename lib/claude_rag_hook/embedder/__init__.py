@@ -31,7 +31,7 @@ def resolve(embedder_cfg: dict[str, Any]) -> Embedder:
     if kind == "fastembed":
         from .fastembed_backend import FastEmbedEmbedder
         return FastEmbedEmbedder(
-            model=embedder_cfg.get("model") or "nomic-embed-text-v1.5",
+            model=embedder_cfg.get("model") or "nomic-ai/nomic-embed-text-v1.5",
             query_prefix=embedder_cfg.get("query_prefix") or "",
             document_prefix=embedder_cfg.get("document_prefix") or "",
         )

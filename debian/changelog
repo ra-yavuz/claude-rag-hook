@@ -1,3 +1,45 @@
+claude-rag-hook (0.2.0-1) unstable; urgency=low
+
+  * Major redesign: integration tool, not CLI.
+  * Drop the user-facing CLI entirely (no more index/query/ls/rm/config/
+    daemon/install/uninstall/version subcommands; no /usr/bin/claude-rag-hook
+    on $PATH). The package now ships a Claude Code hook and the small
+    pieces it needs, all under /usr/lib/claude-rag-hook/. End users
+    install the .deb and use Claude Code normally; nothing on the
+    command line for them to learn.
+  * Wire into Claude Code automatically. The apt postinst merges the
+    hook entry into /etc/claude-code/managed-settings.json (the
+    documented system-wide settings file Claude Code reads with the
+    highest precedence for every user on the machine). Every Claude
+    Code session, current and future user, picks up the hook on next
+    start without per-user setup.
+  * Auto-index on first 'rag:' in a project folder. The hook
+    fork-detaches a background indexer for the nearest project root
+    (the ancestor with .git, pyproject.toml, package.json, Cargo.toml,
+    go.mod, etc.); the user's current prompt passes through to Claude
+    unchanged so they get an answer right now. The next 'rag:' uses
+    the populated index. Subsequent 'rag:' turns trigger an
+    incremental refresh in the background, throttled to 5 minutes.
+  * Auto-index safety rails: hard refusal on $HOME and direct
+    children, /, /etc, /var, /tmp, /usr, /opt, /root, /boot, /sys,
+    /proc, /dev. Project-marker required (a .git or similar) within
+    six ancestors of cwd. Size cap: 20k files / 500 MB; bypass via
+    CLAUDE_RAG_HOOK_BYPASS_SIZE_CAP=1.
+  * Fix settings.json schema. The previous 0.1.0 entry used a fake
+    "name" field at the top level of each matcher; Claude Code's real
+    schema is {"hooks":[{"type":"command","command":"..."}]} nested
+    inside the matcher, no top-level name. uninstall now finds our
+    entry by command-equality on the absolute hook path.
+  * Drop the <context></context> wrapper from hook output. Per Claude
+    Code's documented contract, plain stdout from a UserPromptSubmit
+    hook is appended to the prompt as a system reminder; tag wrapping
+    is unnecessary.
+  * Postinst is idempotent and merges into existing managed-settings.json
+    (other admins / other tools' entries are preserved). Postrm
+    removes only the entry whose command matches our hook path.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Thu, 07 May 2026 22:00:00 +0000
+
 claude-rag-hook (0.1.0-1) unstable; urgency=low
 
   * Initial release.

@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
-# Build a .deb without debhelper. Mirrors what the dh-python build would
-# produce: ships the Python package under /usr/lib/claude-rag-hook (we
-# bootstrap sys.path from bin/ so we do not need to fight dist-packages).
+# Build a .deb without debhelper.
+#
+# Layout shipped:
+#   /usr/lib/claude-rag-hook/claude-rag-hook-hook    (Claude Code invokes)
+#   /usr/lib/claude-rag-hook/claude-rag-hook-admin   (postinst/postrm only)
+#   /usr/lib/claude-rag-hook/claude-rag-hookd        (auto-spawned daemon)
+#   /usr/lib/claude-rag-hook/claude_rag_hook/        (Python package)
+#   /usr/share/doc/claude-rag-hook/{README.md,DESIGN.md,copyright}
+#
+# Nothing on $PATH. End users never type a claude-rag-hook command.
+# They install the package and use Claude Code normally; `rag: <q>`
+# triggers the hook, which is wired in via /etc/claude-code/managed-settings.json
+# by the postinst.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 VERSION=$(sed -nE '1 s/^[^(]*\(([^)]+)\).*/\1/p' "$ROOT/debian/changelog")
 [ -n "$VERSION" ] || { echo "could not parse version from debian/changelog" >&2; exit 1; }
-# Strip the Debian revision (-1, -2, ...) for the package filename.
 DEB_VERSION="$VERSION"
 
 PKG_DIR="$ROOT/dist/claude-rag-hook_${DEB_VERSION}_all"
@@ -15,21 +24,18 @@ DEB_OUT="$ROOT/dist/claude-rag-hook_${DEB_VERSION}_all.deb"
 
 rm -rf "$PKG_DIR" "$DEB_OUT"
 mkdir -p "$PKG_DIR/DEBIAN" \
-         "$PKG_DIR/usr/bin" \
-         "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook" \
          "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/embedder" \
          "$PKG_DIR/usr/share/doc/claude-rag-hook"
 
-install -m 0755 "$ROOT/bin/claude-rag-hook"  "$PKG_DIR/usr/bin/claude-rag-hook"
-install -m 0755 "$ROOT/bin/claude-rag-hookd" "$PKG_DIR/usr/bin/claude-rag-hookd"
+install -m 0755 "$ROOT/bin/claude-rag-hook-hook"  "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-hook"
+install -m 0755 "$ROOT/bin/claude-rag-hook-admin" "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-admin"
+install -m 0755 "$ROOT/bin/claude-rag-hookd"      "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hookd"
 
-# Copy the Python package tree.
-cp -a "$ROOT/lib/claude_rag_hook/." "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/"
+# Copy the package tree, excluding bytecode caches (which accumulate
+# stale .pyc files for renamed/removed modules and would ship them).
+( cd "$ROOT/lib" && find claude_rag_hook -type f -name '*.py' -print0 | \
+    xargs -0 -I {} install -D -m 0644 "{}" "$PKG_DIR/usr/lib/claude-rag-hook/{}" )
 
-# Hook template, README, license.
-mkdir -p "$PKG_DIR/usr/share/claude-rag-hook"
-install -m 0644 "$ROOT/hooks/user-prompt-submit.template.json" \
-                "$PKG_DIR/usr/share/claude-rag-hook/user-prompt-submit.template.json"
 install -m 0644 "$ROOT/README.md"  "$PKG_DIR/usr/share/doc/claude-rag-hook/README.md"
 install -m 0644 "$ROOT/DESIGN.md"  "$PKG_DIR/usr/share/doc/claude-rag-hook/DESIGN.md"
 install -m 0644 "$ROOT/LICENSE"    "$PKG_DIR/usr/share/doc/claude-rag-hook/copyright"
@@ -47,30 +53,38 @@ Recommends: python3-pip
 Suggests: hydra-llm
 Maintainer: Ramazan Yavuz <yavuzramazan1994@gmail.com>
 Homepage: https://ra-yavuz.github.io/claude-rag-hook/
-Description: keyword-triggered local RAG hook for Claude Code
- Type "rag: <question>" in Claude Code; the hook walks back through
- your cwd, looks for a per-folder LanceDB index, embeds the query,
- retrieves the top-K relevant chunks, and prepends them to the prompt
- as a context block before Claude sees it. Cheap, deterministic,
- local-first.
- .
- Unlike MCP-driven local RAG (where the model decides when to retrieve)
- the hook is keyword-triggered: the user types the trigger, the hook
- retrieves; otherwise it is a no-op. Zero token overhead on prompts
+Description: keyword-triggered local RAG inside Claude Code
+ Type "rag: <question>" inside Claude Code; this hook embeds the query,
+ retrieves the top relevant chunks from a local LanceDB index of your
+ project folder, and prepends them to the prompt before Claude sees it.
+ Local-first; the model never has to "decide" whether to retrieve, so
+ there is no MCP round trip and no per-prompt token overhead on prompts
  that do not start with the trigger.
  .
- Ships with a fastembed embedder (lazy import; install via pip extras),
- an OpenAI-compatible /v1/embeddings client, and an optional hydra-llm
- interop layer that reuses an installed embedder catalog and per-folder
- .hydra-index/ stores. A small per-user warm daemon keeps the embedder
- loaded for sub-second retrieval.
+ Auto-indexing on first use: the first "rag:" inside a project folder
+ (one with a .git, pyproject.toml, package.json, or similar marker)
+ fork-detaches a background indexer; the next "rag:" retrieves
+ normally. Hard refusals on \$HOME, /etc, /var, etc., and a 20k-file /
+ 500MB cap protect against accidental indexing of large or sensitive
+ trees.
+ .
+ Wires itself into Claude Code on apt install by merging an entry into
+ /etc/claude-code/managed-settings.json. Every user on the machine
+ picks up the hook on their next Claude Code session; no per-user
+ setup. Removing the package removes the entry.
+ .
+ The fastembed embedder (the default) is not packaged for Debian; it
+ is fetched on first use via pip if missing. To pre-install:
+   pip install --user fastembed lancedb pyarrow
+ Or pick a different embedder backend (OpenAI-compatible local server,
+ hydra-llm interop) in ~/.config/claude-rag-hook/config.yaml.
  .
  DISCLAIMER: provided AS IS, no warranty. Reads files inside any folder
- you index and stores chunked text plus embeddings of those files at
+ it indexes and stores chunked text plus embeddings of those files at
  <folder>/.claude-rag-index/. Retrieved chunks are sent to Anthropic
- when the trigger fires. The author is not liable for any damage to
- data, hardware, or system, or for the content of model output. Audit
- what you index. See /usr/share/doc/claude-rag-hook/README.md.
+ when "rag:" fires. The author is not liable for any damage to data,
+ hardware, system, or for the content of model output. Audit what you
+ index. See /usr/share/doc/claude-rag-hook/README.md.
 EOF
 
 : > "$PKG_DIR/DEBIAN/conffiles"
