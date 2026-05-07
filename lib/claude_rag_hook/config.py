@@ -18,7 +18,12 @@ from . import paths
 
 DEFAULTS: dict[str, Any] = {
     "triggers": ["rag:", "/rag"],
-    "lax_trigger": False,
+    # Lax form means "rag <text>" (no colon) also triggers. Catches false
+    # positives in theory ("rag dolls are weird") but in coding contexts
+    # the friction-cost of remembering the colon dwarfs the false-trigger
+    # cost. Default on; users can disable in config if they hit a false
+    # positive that matters.
+    "lax_trigger": True,
     "top_k": 5,
     "embedder": {
         "kind": "fastembed",

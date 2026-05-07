@@ -1,3 +1,16 @@
+claude-rag-hook (0.2.1-1) unstable; urgency=low
+
+  * Fix: auto-index incorrectly refused direct children of $HOME, even
+    those with project markers. Folders like ~/regurio-monorepo,
+    ~/projects/foo, ~/code/bar are common and legitimate places to
+    keep a project; refusing them out of an abundance of caution
+    silently broke the integration ('rag:' looked like it did
+    nothing). The project-marker requirement and the size cap already
+    gate everything that needs gating; the redundant rule is dropped.
+    $HOME itself is still refused.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Thu, 07 May 2026 22:50:00 +0000
+
 claude-rag-hook (0.2.0-1) unstable; urgency=low
 
   * Major redesign: integration tool, not CLI.

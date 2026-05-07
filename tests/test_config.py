@@ -11,6 +11,16 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.get("embedder", "kind") == "fastembed"
 
 
+def test_lax_trigger_is_default_on():
+    """Lax `rag <text>` triggers on by default; the colon is opt-in for
+    users who hit false positives. Tests the resolved trigger list and
+    the flag separately."""
+    cfg = config_mod.Config()
+    triggers = config_mod.triggers(cfg)
+    assert "rag " in triggers
+    assert cfg.get("lax_trigger") is True
+
+
 def test_user_override_merges(tmp_path: Path):
     p = tmp_path / "config.yaml"
     p.write_text(yaml.safe_dump({

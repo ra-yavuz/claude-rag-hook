@@ -80,16 +80,14 @@ def _hard_refused(p: Path) -> bool:
     p = p.resolve()
     if p in HARD_REFUSE:
         return True
-    home = Path.home().resolve()
-    if p == home:
+    if p == Path.home().resolve():
         return True
-    # direct children of $HOME (Documents, Downloads, .config, .ssh, etc.)
-    try:
-        if p.parent == home and p != home:
-            return True
-    except OSError:
-        pass
     return False
+    # Note: we do NOT refuse direct children of $HOME. Project folders
+    # like ~/myproject, ~/work/foo, ~/code/bar are common and legitimate;
+    # the project-marker check below already gates everything else
+    # (typing `rag:` from ~/Documents with no .git inside gets refused
+    # for "no project marker", which is the right message).
 
 
 def find_project_root(start: Path) -> Path | None:
