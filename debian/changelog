@@ -1,0 +1,27 @@
+claude-rag-hook (0.1.0-1) unstable; urgency=low
+
+  * Initial release.
+  * UserPromptSubmit hook subcommand: parses 'rag:', '/rag', and
+    'rag@<tag>:' trigger forms, walks up from cwd to find a
+    .claude-rag-index/ (also reads hydra-llm's .hydra-index/), embeds
+    the query, retrieves top-K chunks, and emits a context block on
+    stdout for Claude Code to prepend to the user's prompt.
+  * Indexer: gitignore-aware walker, code/prose classifier, line-aware
+    overlap chunker (1500-char target, 200-char overlap), incremental
+    refresh keyed on (mtime, size).
+  * Storage: per-folder LanceDB at <folder>/.claude-rag-index/, with a
+    meta.yaml recording the embedder used and a files.json driving
+    incremental refresh.
+  * Embedder backends: fastembed (default, pure-Python ONNX),
+    OpenAI-compatible /v1/embeddings client, hydra-llm interop.
+  * Warm embedder daemon over a per-user Unix domain socket; idle TTL
+    so it does not linger when not in use.
+  * CLI: install / uninstall / index / query / ls / rm / config /
+    daemon {status,start,stop} / hook / version.
+  * install / uninstall patch ~/.claude/settings.json with a clear
+    backup; an entry tagged 'name: claude-rag-hook' is the unit of
+    install/uninstall so it does not interfere with other hooks.
+  * Disclaimer printed on every CLI invocation (suppress with
+    CLAUDE_RAG_HOOK_NO_DISCLAIMER=1) and embedded in --help.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Thu, 07 May 2026 18:00:00 +0000

@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+# claude-rag-hookd: warm embedder daemon entrypoint.
+
+import os
+import sys
+
+
+def _bootstrap_sys_path() -> None:
+    here = os.path.dirname(os.path.realpath(__file__))
+    lib_local = os.path.normpath(os.path.join(here, "..", "lib"))
+    lib_apt = "/usr/lib/claude-rag-hook"
+    for candidate in (lib_local, lib_apt):
+        if os.path.isdir(os.path.join(candidate, "claude_rag_hook")) and candidate not in sys.path:
+            sys.path.insert(0, candidate)
+
+
+_bootstrap_sys_path()
+
+from claude_rag_hook.daemon import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main())

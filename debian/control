@@ -1,0 +1,47 @@
+Source: claude-rag-hook
+Section: utils
+Priority: optional
+Maintainer: Ramazan Yavuz <yavuzramazan1994@gmail.com>
+Build-Depends: debhelper-compat (= 13), dh-python, python3-all
+Standards-Version: 4.6.2
+Homepage: https://ra-yavuz.github.io/claude-rag-hook/
+Vcs-Git: https://github.com/ra-yavuz/claude-rag-hook.git
+Vcs-Browser: https://github.com/ra-yavuz/claude-rag-hook
+Rules-Requires-Root: no
+
+Package: claude-rag-hook
+Architecture: all
+Depends: ${misc:Depends},
+ python3 (>= 3.10),
+ python3-yaml,
+ python3-numpy,
+ python3-pathspec
+Recommends: python3-pip
+Suggests: hydra-llm
+Description: keyword-triggered local RAG hook for Claude Code
+ claude-rag-hook is a UserPromptSubmit hook for Claude Code, the
+ Anthropic terminal AI coding tool. Type "rag: <question>" in Claude
+ Code; the hook walks back through your cwd, looks for an index, embeds
+ the query against the chosen embedder, retrieves the top-K relevant
+ chunks from a per-folder LanceDB index, and prepends them to the
+ prompt as a context block. Claude Code receives an enriched prompt and
+ answers normally.
+ .
+ Unlike MCP-driven local RAG (where the model decides when to retrieve)
+ the hook is keyword-triggered and deterministic: the user types the
+ trigger, the hook retrieves; otherwise it is a no-op. Zero token
+ overhead on prompts that do not start with the trigger.
+ .
+ Ships with a fastembed embedder (lazy import; install via pip extras),
+ an OpenAI-compatible /v1/embeddings client, and an optional hydra-llm
+ interop layer that reuses an installed embedder catalog and per-folder
+ .hydra-index/ stores. A small per-user warm daemon keeps the embedder
+ loaded for sub-second retrieval.
+ .
+ DISCLAIMER: This software reads files inside any folder you index and
+ stores chunked text plus embeddings of those files at
+ <folder>/.claude-rag-index/. Retrieved chunks are sent to Anthropic
+ when the trigger fires. It is provided AS IS, WITHOUT WARRANTY OF ANY
+ KIND. The author is not liable for any damage to data, hardware, or
+ system, or for the content of model output. Audit what you index. See
+ /usr/share/doc/claude-rag-hook/README.md for the full text.

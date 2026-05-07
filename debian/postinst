@@ -1,0 +1,23 @@
+#!/bin/sh
+# postinst for claude-rag-hook
+set -e
+
+case "$1" in
+    configure)
+        # Nothing to enable or start. The hook is wired into Claude Code
+        # by the user with `claude-rag-hook install`, since it modifies
+        # the user's ~/.claude/settings.json (a per-user file we do not
+        # touch from the package). We do not enable a system service.
+        :
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

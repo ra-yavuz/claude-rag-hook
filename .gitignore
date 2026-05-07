@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.deb
+.venv/
+.venv-dev/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project state
+.claude-rag-index/
+WORKINGDIR/
+
+# Local Claude harness scratch
+.claude/

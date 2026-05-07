@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "name": "claude-rag-hook",
+        "command": "claude-rag-hook hook",
+        "description": "Keyword-triggered local RAG: 'rag: <q>' prepends retrieved chunks."
+      }
+    ]
+  }
+}
