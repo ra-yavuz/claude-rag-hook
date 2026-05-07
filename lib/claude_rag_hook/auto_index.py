@@ -22,7 +22,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import classifier, walker
+from . import walker
 
 # Markers that signal "this is the root of a coherent project" - same set
 # git, ripgrep, pre-commit, and pretty much every dev tool agrees on.
