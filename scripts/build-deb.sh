@@ -2,16 +2,17 @@
 # Build a .deb without debhelper.
 #
 # Layout shipped:
+#   /usr/bin/crh                                     (operator-facing CLI)
 #   /usr/lib/claude-rag-hook/claude-rag-hook-hook    (Claude Code invokes)
 #   /usr/lib/claude-rag-hook/claude-rag-hook-admin   (postinst/postrm only)
 #   /usr/lib/claude-rag-hook/claude-rag-hookd        (auto-spawned daemon)
 #   /usr/lib/claude-rag-hook/claude_rag_hook/        (Python package)
+#   /usr/lib/systemd/user/claude-rag-hook-refresher.service (auto-refresh daemon, off by default)
 #   /usr/share/doc/claude-rag-hook/{README.md,DESIGN.md,copyright}
 #
-# Nothing on $PATH. End users never type a claude-rag-hook command.
-# They install the package and use Claude Code normally; `rag: <q>`
-# triggers the hook, which is wired in via /etc/claude-code/managed-settings.json
-# by the postinst.
+# The hook is wired into Claude Code via /etc/claude-code/managed-settings.json
+# by the postinst (zero-touch). The CLI (`crh`) is for operator tasks:
+# watch indexing progress, manage tags, run the auto-refresh daemon.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,12 +25,23 @@ DEB_OUT="$ROOT/dist/claude-rag-hook_${DEB_VERSION}_all.deb"
 
 rm -rf "$PKG_DIR" "$DEB_OUT"
 mkdir -p "$PKG_DIR/DEBIAN" \
+         "$PKG_DIR/usr/bin" \
          "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/embedder" \
+         "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/cli" \
+         "$PKG_DIR/usr/lib/systemd/user" \
          "$PKG_DIR/usr/share/doc/claude-rag-hook"
 
 install -m 0755 "$ROOT/bin/claude-rag-hook-hook"  "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-hook"
 install -m 0755 "$ROOT/bin/claude-rag-hook-admin" "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-admin"
 install -m 0755 "$ROOT/bin/claude-rag-hookd"      "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hookd"
+install -m 0755 "$ROOT/bin/crh"                   "$PKG_DIR/usr/bin/crh"
+
+# systemd user unit for the auto-refresh daemon. Off by default;
+# users opt in with `crh refresher start` (which is `systemctl --user
+# enable --now`). Per-project opt-in is a marker file inside the
+# project's index dir; see `crh auto on`.
+install -m 0644 "$ROOT/debian/claude-rag-hook-refresher.service" \
+    "$PKG_DIR/usr/lib/systemd/user/claude-rag-hook-refresher.service"
 
 # Copy the package tree, excluding bytecode caches (which accumulate
 # stale .pyc files for renamed/removed modules and would ship them).

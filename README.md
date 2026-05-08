@@ -115,6 +115,51 @@ The hook returns a `decision: "block"` envelope (Claude Code's documented
 short-circuit) so the model is not invoked: zero tokens spent, no Claude
 paraphrase, the user just sees the status text and the turn ends.
 
+## Operator CLI: `crh`
+
+apt install puts a `crh` binary on `$PATH`. The hook handles everything
+inside Claude Code; `crh` is for the operator side: watch indexing
+progress, run blocking refreshes for scripts, query the store, manage
+the auto-refresh daemon, diagnose the install.
+
+```text
+crh status                  # one-liner state of the cwd's index
+crh status --watch          # live-redrawing progress display until done
+crh status --all            # state of every registered store
+crh index [path]            # blocking initial index, with progress bar
+crh refresh [path]          # blocking incremental refresh
+crh query "retry policy"    # one-shot retrieval to stdout (same chunks the hook injects)
+crh ls                      # list registered stores with chunk/file counts
+crh tag <path> work         # tag a store for `rag@work: <q>` federation
+crh untag <path> work
+crh forget <path>           # delete an index, with confirmation
+crh doctor                  # diagnose: model cache, embedder, hook wiring, orphan procs
+```
+
+Auto-refresh daemon (off by default, opt-in):
+
+```text
+crh refresher start         # systemctl --user enable --now claude-rag-hook-refresher
+crh refresher stop
+crh refresher status        # systemd state + watched-projects summary
+crh auto on [path]          # opt this project into the daemon (drops a marker file)
+crh auto off [path]         # opt out
+```
+
+The refresher is a per-user systemd unit running at `Nice=19` /
+`CPUSchedulingPolicy=idle` / `IOSchedulingClass=idle`, with a 60s
+post-change quiet period and a hard 5-minute floor between refreshes
+per project. It only watches projects you explicitly opted in. See
+`/usr/lib/systemd/user/claude-rag-hook-refresher.service` for the
+full sandbox profile.
+
+Resilience: indexer runs persist their file manifest on a throttled
+checkpoint cadence (every 16 files / 2s), atomically. If the indexer
+is killed mid-flight (kill, OOM, system crash, power off), `crh
+refresh` resumes from the last checkpoint instead of re-indexing
+already-completed files. `crh status` reports the `[interrupted]`
+state when this happens.
+
 When you bare-`rag` in a folder that has no index yet, the hook also
 fork-detaches the indexer right then, so a single `rag` is enough to
 get setup started.

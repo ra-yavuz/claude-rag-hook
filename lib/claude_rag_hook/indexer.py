@@ -144,16 +144,28 @@ def index_folder(
                 _flush()
         manifest[f.rel] = {"size": f.size, "mtime": f.mtime}
 
-        # Throttled per-file progress emission. The runner parses
-        # "progress: i/n files" lines and updates .progress so bare
-        # `rag` (status) and any future log tail show live counters
-        # instead of frozen "0/N".
+        # Throttled per-file progress emission AND periodic manifest
+        # persistence. Both fire on the same cadence, which also acts
+        # as the resumability checkpoint: if the indexer is killed
+        # between checkpoints, the next run sees a manifest with
+        # everything completed up to the last checkpoint and skips
+        # those files (the existing size+mtime gate). At most
+        # PROGRESS_THROTTLE_FILES files of work are lost per
+        # interruption.
+        #
+        # The flush before write_files_manifest is critical: vectors
+        # for in-flight chunks must be in the LanceDB table before we
+        # claim those files are done in the manifest, otherwise a
+        # crash leaves manifest claiming a file is indexed when its
+        # chunks aren't actually in the table.
         now = time.monotonic()
         if (
             i - last_progress_i >= PROGRESS_THROTTLE_FILES
             or now - last_progress_at >= PROGRESS_THROTTLE_SECONDS
             or i == n_to_index
         ):
+            _flush()
+            store.write_files_manifest(index_dir, manifest)
             say(f"progress: {i}/{n_to_index} files")
             last_progress_at = now
             last_progress_i = i

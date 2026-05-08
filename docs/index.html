@@ -100,7 +100,7 @@
   "description": "A UserPromptSubmit hook for Anthropic's Claude Code that does keyword-triggered local retrieval-augmented generation. apt install wires the hook into Claude Code for every user on the machine. Type 'rag: <question>' inside any project folder; the hook auto-indexes that folder on first use, then retrieves the top-K relevant chunks from a per-folder LanceDB index and prepends them to the prompt as a context block before Claude sees it. Local-first, deterministic, zero token overhead on prompts that do not start with the trigger.",
   "url": "https://ra-yavuz.github.io/claude-rag-hook/",
   "downloadUrl": "https://github.com/ra-yavuz/claude-rag-hook/releases",
-  "softwareVersion": "0.3.3",
+  "softwareVersion": "0.4.0",
   "license": "https://opensource.org/licenses/MIT",
   "author": { "@type": "Person", "name": "Ramazan Yavuz", "url": "https://ra-yavuz.github.io/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -171,7 +171,7 @@
 
 <picture><source srcset="logo.webp" type="image/webp"><img class="brand" src="logo.png" alt="claude-rag-hook logo: angle brackets framing a hook that catches a chunk of text"></picture>
 
-<h1>claude-rag-hook <span class="pill new">v0.3.3</span></h1>
+<h1>claude-rag-hook <span class="pill new">v0.4.0</span></h1>
 <p class="tag">apt install. Type <code>rag &lt;q&gt;</code> in Claude Code. Done.</p>
 <p class="subtag">A <code>UserPromptSubmit</code> hook for Anthropic's <a href="https://docs.claude.com/en/docs/claude-code/overview">Claude Code</a> that does keyword-triggered local RAG. <code>apt install claude-rag-hook</code> wires the hook into Claude Code for every user on the machine. The first <code>rag:</code> inside any project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves the top relevant chunks from a per-folder <a href="https://lancedb.com">LanceDB</a> index and prepends them to the prompt before Claude sees it. Cheap, deterministic, local-first. Prompts that do not start with the trigger pass through with zero token overhead.</p>
 
@@ -354,6 +354,32 @@ daemon:
   enabled: true
 notifications:
   on_index_complete: true        # desktop notification (notify-send) on first index</code></pre>
+
+<h2>Operator CLI: <code>crh</code></h2>
+
+<p>apt install puts a <code>crh</code> binary on <code>$PATH</code>. The hook handles everything inside Claude Code; <code>crh</code> is for the operator side: watch indexing progress, run blocking refreshes for scripts, query the store, manage the auto-refresh daemon, diagnose the install.</p>
+
+<pre><code>crh status                  # one-liner state of the cwd's index
+crh status --watch          # live-redrawing progress display until done
+crh status --all            # state of every registered store
+crh index [path]            # blocking initial index, with progress bar
+crh refresh [path]          # blocking incremental refresh
+crh query "retry policy"    # one-shot retrieval to stdout
+crh ls                      # list registered stores
+crh tag &lt;path&gt; work         # tag for `rag@work: &lt;q&gt;` federation
+crh forget &lt;path&gt;           # delete an index, with confirmation
+crh doctor                  # diagnose: model cache, embedder, hook wiring</code></pre>
+
+<p><strong>Auto-refresh daemon</strong> (off by default, opt-in):</p>
+
+<pre><code>crh refresher start         # systemctl --user enable --now
+crh refresher stop
+crh auto on [path]          # opt this project in
+crh auto off [path]         # opt out</code></pre>
+
+<p>The refresher is a per-user systemd unit running at <code>Nice=19</code>, <code>CPUSchedulingPolicy=idle</code>, <code>IOSchedulingClass=idle</code>, with a 60-second post-change quiet period and a hard 5-minute floor between refreshes per project. It only watches projects you explicitly opted in (a marker file inside the index dir).</p>
+
+<p><strong>Resilience.</strong> Indexer runs persist their file manifest on a throttled checkpoint cadence (every 16 files / 2 seconds), atomically. If the indexer is killed mid-flight (kill, OOM, system crash, power loss), <code>crh refresh</code> resumes from the last checkpoint instead of re-indexing already-completed files. <code>crh status</code> reports the <code>[interrupted]</code> state when this happens so you can decide between resuming and starting over.</p>
 
 <h2>How it works under the hood</h2>
 

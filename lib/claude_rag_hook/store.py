@@ -83,10 +83,29 @@ def read_files_manifest(index_dir: Path) -> dict[str, dict[str, Any]]:
 
 
 def write_files_manifest(index_dir: Path, manifest: dict[str, dict[str, Any]]) -> None:
+    """Atomic manifest write.
+
+    The manifest is the resumability anchor: on the next indexer run,
+    files whose (size, mtime) match this manifest are skipped. A
+    half-written or empty manifest (eg. crash mid-write) means the
+    next run re-embeds everything, doubling chunks until pruned.
+    Write to a temp file in the same directory, fsync, then rename
+    onto the real path so any reader sees either the old or the new
+    manifest, never a torn one.
+    """
     index_dir.mkdir(parents=True, exist_ok=True)
-    with (index_dir / FILES_NAME).open("w", encoding="utf-8") as f:
+    final = index_dir / FILES_NAME
+    tmp = final.with_suffix(final.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
         f.write("\n")
+        f.flush()
+        try:
+            import os as _os
+            _os.fsync(f.fileno())
+        except OSError:
+            pass
+    tmp.replace(final)
 
 
 def open_db(index_dir: Path):

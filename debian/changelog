@@ -1,3 +1,45 @@
+claude-rag-hook (0.4.0-1) unstable; urgency=low
+
+  * New: operator CLI at /usr/bin/crh. Subcommands: status, index,
+    refresh, query, forget, ls, tag, untag, doctor, auto on/off,
+    refresher run/start/stop/status. Blocking commands (index,
+    refresh) show a live progress bar with files-done/total, ETA,
+    and elapsed; --json for scripting; --no-watch to suppress the
+    bar in CI. The CLI gives you observability that was previously
+    only available by tailing log files.
+  * New: status `[interrupted]` state. When .progress claims an
+    indexing job is active but the pid is dead (kill, OOM, crash,
+    power loss), `crh status` reports the partial state and points
+    at recovery: `crh refresh` to resume from the manifest, or
+    `crh forget` to drop the partial index. Previously the CLI
+    would have reported `[ready]` and the user would have a
+    half-built index without knowing it.
+  * Resilience: indexer now persists the file manifest on a
+    throttled checkpoint cadence (every 16 files / 2 seconds),
+    atomically (write-tmp + rename + fsync). A killed indexer no
+    longer means starting over: `crh refresh` resumes from the
+    last checkpoint. Worst-case lost work is the trailing N files
+    since the last checkpoint, which the existing size+mtime gate
+    handles harmlessly.
+  * New: auto-refresh daemon (off by default, opt-in per host AND
+    per project). Systemd user unit at
+    /usr/lib/systemd/user/claude-rag-hook-refresher.service with
+    Nice=19, CPUSchedulingPolicy=idle, IOSchedulingClass=idle, and
+    a 50% CPU quota so it yields to foreground work. Per-project
+    opt-in is a `.auto-refresh` marker file inside the index dir;
+    `crh auto on` drops it. Daemon polls watched projects every
+    30 seconds, coalesces changes for 60 seconds of quiet before
+    refreshing, and never refreshes the same project more than
+    once per 5 minutes. Skips refreshes when loadavg-1m > 1.5 or
+    laptop is on battery below 30%.
+  * `crh doctor` checks the install end-to-end: hook binary
+    present, hook wired into managed-settings.json, fastembed
+    importable, lancedb importable, model cache populated,
+    embedder daemon socket healthy, no orphan indexers, total
+    index disk usage, refresher daemon systemd state.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 15:30:00 +0000
+
 claude-rag-hook (0.3.3-1) unstable; urgency=low
 
   * Fix: indexer now emits throttled per-file progress messages
