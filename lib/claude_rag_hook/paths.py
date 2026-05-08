@@ -30,6 +30,32 @@ def state_dir() -> Path:
     return _xdg("XDG_STATE_HOME", Path.home() / ".local" / "state") / "claude-rag-hook"
 
 
+SYSTEM_MODELS_DIR = Path("/var/cache/claude-rag-hook/models")
+
+
+def models_cache_dir() -> Path:
+    """Return the directory fastembed (and any future model backends)
+    should use as their cache.
+
+    Prefer the machine-wide /var/cache/claude-rag-hook/models/ if it
+    exists and is writable by the current user (created by the apt
+    postinst, mode 0775 root:adm). Falls back to the per-user
+    ~/.cache/claude-rag-hook/models/ otherwise.
+
+    Centralising this in one helper means:
+    - Reboots don't wipe model files (the upstream-default /tmp does).
+    - apt postinst can pre-fetch into the same location the hook will
+      read at runtime, so first `rag` is fast even on fresh installs.
+    - apt purge can clean it up.
+    - Multi-user hosts share one ~80MB ONNX download.
+    """
+    if SYSTEM_MODELS_DIR.is_dir() and os.access(SYSTEM_MODELS_DIR, os.W_OK):
+        return SYSTEM_MODELS_DIR
+    user = cache_dir() / "models"
+    user.mkdir(parents=True, exist_ok=True)
+    return user
+
+
 def config_file() -> Path:
     return config_dir() / "config.yaml"
 

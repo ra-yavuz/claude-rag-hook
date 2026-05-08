@@ -13,6 +13,7 @@ set -e
 
 ADMIN=/usr/lib/claude-rag-hook/claude-rag-hook-admin
 HOOK=/usr/lib/claude-rag-hook/claude-rag-hook-hook
+MODELS_DIR=/var/cache/claude-rag-hook/models
 
 case "$1" in
     configure)
@@ -21,6 +22,35 @@ case "$1" in
             "$ADMIN" install --command "$HOOK" \
                 --settings /etc/claude-code/managed-settings.json \
                 || echo "claude-rag-hook: failed to wire hook into managed-settings.json (will be retried on next reconfigure)" >&2
+        fi
+
+        # Machine-wide model cache. fastembed's default lives under
+        # /tmp/fastembed_cache, which is wiped at reboot; we override
+        # to a persistent path so the ~80MB ONNX download survives.
+        # Mode 0775 + group adm so any local user can read; group-write
+        # so the first user to download fills it for everyone.
+        mkdir -p "$MODELS_DIR"
+        chgrp adm "$MODELS_DIR" 2>/dev/null || true
+        chmod 2775 "$MODELS_DIR" 2>/dev/null || true
+
+        # Best-effort pre-fetch: if fastembed is importable in the
+        # system Python (i.e. someone already pip-installed it), warm
+        # the cache so the first `rag <q>` is fast. Network failures,
+        # missing fastembed, or any other error are silently OK; the
+        # hook's runtime auto-recovery will handle a missing model on
+        # first use.
+        if command -v python3 >/dev/null 2>&1; then
+            python3 - "$MODELS_DIR" <<'PYEOF' >/dev/null 2>&1 || true
+import sys
+try:
+    from fastembed import TextEmbedding
+except Exception:
+    sys.exit(0)
+try:
+    TextEmbedding(model_name="nomic-ai/nomic-embed-text-v1.5", cache_dir=sys.argv[1])
+except Exception:
+    sys.exit(0)
+PYEOF
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)

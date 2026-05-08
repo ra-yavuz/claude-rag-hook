@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-rag-hook"
-version = "0.3.1"
+version = "0.3.2"
 description = "Keyword-triggered local RAG hook for Claude Code. Type 'rag <question>' in Claude Code; the hook prepends retrieved chunks from a local index before Claude sees the prompt. Auto-indexes the project on first use; wires itself into Claude Code automatically on apt install."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,3 +1,30 @@
+claude-rag-hook (0.3.2-1) unstable; urgency=low
+
+  * Fix: fastembed model cache no longer lives in /tmp, where it gets
+    wiped on every reboot (and intermittently by systemd-tmpfiles
+    during uptime), forcing a 4-minute re-download from HuggingFace.
+    The hook now points fastembed at /var/cache/claude-rag-hook/models/
+    (machine-wide, created by apt postinst, mode 2775 group adm so
+    any local user can read and the first user fills the shared
+    cache for everyone). Falls back to ~/.cache/claude-rag-hook/models/
+    if /var/cache is unwritable (rare; e.g. read-only host).
+  * Fix: when the on-disk model cache exists but the .onnx file is
+    missing (the /tmp purge case, or any interrupted download),
+    fastembed used to throw NoSuchFile and the indexer would
+    persist a "failed" .progress that required manual intervention.
+    The hook now detects this state, wipes the broken model dir,
+    and lets fastembed re-download cleanly. Plus a self-heal retry
+    on any TextEmbedding construction error.
+  * Install: apt postinst now best-effort pre-fetches the default
+    embedding model (~80MB ONNX) into /var/cache so the first
+    `rag <q>` is fast on a fresh install. Pre-fetch is silent on
+    failure (network down, fastembed not installed, etc.); the
+    runtime auto-recovery path covers all the same cases on demand.
+  * Install: apt purge now removes /var/cache/claude-rag-hook/. A
+    plain `apt remove` leaves the cache so a reinstall is fast.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 14:00:00 +0000
+
 claude-rag-hook (0.3.1-1) unstable; urgency=low
 
   * UX: bare `rag` now uses Claude Code's documented `decision: "block"`

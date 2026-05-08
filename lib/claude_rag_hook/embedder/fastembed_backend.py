@@ -2,11 +2,53 @@
 
 Default model: nomic-embed-text-v1.5 (768d, ~80 MB ONNX, no Hugging Face
 token needed). Loaded lazily on first call so import time stays cheap.
+
+Cache location: by default fastembed downloads models into
+`/tmp/fastembed_cache/`, which is wiped by /tmp cleanup at every
+reboot (and intermittently by systemd-tmpfiles during uptime). That
+forces a 4-minute re-download on every boot. We override to
+`paths.models_cache_dir()` (machine-wide if writable, per-user
+otherwise) so the model survives reboots.
+
+Auto-recovery: if a previous download was interrupted or the cache
+shell exists but the .onnx file is missing (the /tmp purge case),
+fastembed sees the directory and refuses to re-download, throwing
+`NoSuchFile`. We detect that case, wipe the broken model dir, and
+retry once.
 """
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Any
+
+from .. import paths
+
+
+def _model_dir_name(model: str) -> str:
+    """fastembed/HuggingFace cache dir name for a given model id.
+
+    "nomic-ai/nomic-embed-text-v1.5" -> "models--nomic-ai--nomic-embed-text-v1.5"
+    """
+    return "models--" + model.replace("/", "--")
+
+
+def _onnx_present(cache_root: Path, model: str) -> bool:
+    """Cheap heuristic: does the cached model dir contain at least one
+    .onnx file? Empty/half-broken caches return False."""
+    model_dir = cache_root / _model_dir_name(model)
+    if not model_dir.is_dir():
+        return True  # nothing cached at all; let fastembed fetch from scratch
+    for _ in model_dir.rglob("*.onnx"):
+        return True
+    return False
+
+
+def _wipe_model_dir(cache_root: Path, model: str) -> None:
+    model_dir = cache_root / _model_dir_name(model)
+    if model_dir.is_dir():
+        shutil.rmtree(model_dir, ignore_errors=True)
 
 
 class FastEmbedEmbedder:
@@ -37,7 +79,24 @@ class FastEmbedEmbedder:
                 "or pick a different embedder.kind in your config "
                 "(openai-compatible, hydra-llm)."
             ) from e
-        self._model = TextEmbedding(model_name=self.model)
+
+        cache_root = paths.models_cache_dir()
+        cache_root.mkdir(parents=True, exist_ok=True)
+
+        # Pre-flight: if the model cache shell exists but no .onnx is
+        # present (eg. /tmp purge or interrupted download), wipe it so
+        # fastembed redownloads cleanly instead of erroring out.
+        if not _onnx_present(cache_root, self.model):
+            _wipe_model_dir(cache_root, self.model)
+
+        try:
+            self._model = TextEmbedding(model_name=self.model, cache_dir=str(cache_root))
+        except Exception:
+            # One self-heal retry: assume the on-disk cache is broken,
+            # wipe the model subdir, and try again with a fresh download.
+            _wipe_model_dir(cache_root, self.model)
+            self._model = TextEmbedding(model_name=self.model, cache_dir=str(cache_root))
+
         # Probe dimension with a tiny embedding.
         sample = list(self._model.embed(["probe"]))[0]
         self._dim = int(len(sample))

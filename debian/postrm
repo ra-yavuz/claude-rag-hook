@@ -9,9 +9,17 @@ set -e
 
 ADMIN=/usr/lib/claude-rag-hook/claude-rag-hook-admin
 HOOK=/usr/lib/claude-rag-hook/claude-rag-hook-hook
+MODELS_DIR=/var/cache/claude-rag-hook/models
 
 case "$1" in
     remove|purge)
+        # On purge, also drop the machine-wide model cache. On a plain
+        # remove (without purge) we leave it so an apt reinstall is
+        # fast (no re-download of the ~80MB ONNX).
+        if [ "$1" = "purge" ] && [ -d "$MODELS_DIR" ]; then
+            rm -rf "$MODELS_DIR"
+            rmdir /var/cache/claude-rag-hook 2>/dev/null || true
+        fi
         # On remove, the package's binaries are about to be deleted, so
         # leaving a settings entry pointing at /usr/lib/claude-rag-hook/
         # would be a stale command. Best-effort: try the admin tool if it
