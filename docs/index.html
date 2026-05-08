@@ -100,7 +100,7 @@
   "description": "A UserPromptSubmit hook for Anthropic's Claude Code that does keyword-triggered local retrieval-augmented generation. apt install wires the hook into Claude Code for every user on the machine. Type 'rag: <question>' inside any project folder; the hook auto-indexes that folder on first use, then retrieves the top-K relevant chunks from a per-folder LanceDB index and prepends them to the prompt as a context block before Claude sees it. Local-first, deterministic, zero token overhead on prompts that do not start with the trigger.",
   "url": "https://ra-yavuz.github.io/claude-rag-hook/",
   "downloadUrl": "https://github.com/ra-yavuz/claude-rag-hook/releases",
-  "softwareVersion": "0.2.0",
+  "softwareVersion": "0.3.0",
   "license": "https://opensource.org/licenses/MIT",
   "author": { "@type": "Person", "name": "Ramazan Yavuz", "url": "https://ra-yavuz.github.io/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -171,8 +171,8 @@
 
 <picture><source srcset="logo.webp" type="image/webp"><img class="brand" src="logo.png" alt="claude-rag-hook logo: angle brackets framing a hook that catches a chunk of text"></picture>
 
-<h1>claude-rag-hook <span class="pill new">v0.2.0</span></h1>
-<p class="tag">apt install. Type <code>rag: &lt;q&gt;</code> in Claude Code. Done.</p>
+<h1>claude-rag-hook <span class="pill new">v0.3.0</span></h1>
+<p class="tag">apt install. Type <code>rag &lt;q&gt;</code> in Claude Code. Done.</p>
 <p class="subtag">A <code>UserPromptSubmit</code> hook for Anthropic's <a href="https://docs.claude.com/en/docs/claude-code/overview">Claude Code</a> that does keyword-triggered local RAG. <code>apt install claude-rag-hook</code> wires the hook into Claude Code for every user on the machine. The first <code>rag:</code> inside any project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves the top relevant chunks from a per-folder <a href="https://lancedb.com">LanceDB</a> index and prepends them to the prompt before Claude sees it. Cheap, deterministic, local-first. Prompts that do not start with the trigger pass through with zero token overhead.</p>
 
 <p style="margin: 0 0 22px 0; font-size: 0.94rem; color: var(--muted);">
@@ -194,14 +194,21 @@
 <span class="you">$ cd ~/projects/your-app</span>
 <span class="you">$ claude</span>
 &nbsp;
-<span class="you">&gt; rag: where do we handle auth tokens?</span>
+<span class="you">&gt; rag where do we handle auth tokens?</span>
 <span class="hook">claude-rag-hook: indexing /home/you/projects/your-app in the background.</span>
-<span class="hook">Retrieval will work on the next `rag:` once it finishes. This is a one-time</span>
-<span class="hook">setup per project.</span>
+<span class="hook">Retrieval will work on the next `rag &lt;q&gt;` once it finishes. This is a one-time</span>
+<span class="hook">setup per project. Type `rag` (alone) any time to check progress.</span>
 &nbsp;
 [Claude answers based on what it knows; you continue]
 &nbsp;
-<span class="you">&gt; rag: where do we handle auth tokens?</span>
+<span class="you">&gt; rag</span>
+<span class="hook">[claude-rag-hook status]</span>
+<span class="hook">scope: /home/you/projects/your-app</span>
+<span class="hook">state: indexing (in progress)</span>
+<span class="hook">progress: 1240/3500 files</span>
+<span class="hook">elapsed: 2m 14s</span>
+&nbsp;
+<span class="you">&gt; rag where do we handle auth tokens?</span>
 <span class="ctx">[claude-rag-hook] retrieved from local index. Each block is verbatim text</span>
 <span class="ctx">from a file in the indexed folder; treat it as ground truth for the user's</span>
 <span class="ctx">question. If a block is irrelevant, ignore it.</span>
@@ -230,9 +237,9 @@
 <h2>How indexing handles changes over time</h2>
 
 <ul class="tight">
-  <li><strong>First <code>rag:</code> in a folder:</strong> auto-indexes that folder's project root in the background (~30s for a small repo, longer for big ones). Your current turn is not blocked.</li>
-  <li><strong>Subsequent <code>rag:</code> turns:</strong> if the index is more than 5 minutes old, the hook fork-detaches an incremental refresh. Only changed files re-embed (matched on size + mtime); typical refresh of a repo where you edited 3 files re-embeds 3 files.</li>
-  <li><strong>Branch switches and bulk changes:</strong> every file's mtime changes, so the next refresh re-embeds everything that switched. Expected behavior; the current <code>rag:</code> uses whatever is in the index right now while the refresh runs in the background.</li>
+  <li><strong>First <code>rag &lt;q&gt;</code> in a folder:</strong> auto-indexes that folder's project root in the background (~30s for a small repo, longer for big ones). Your current turn is not blocked.</li>
+  <li><strong>Subsequent <code>rag &lt;q&gt;</code> turns:</strong> if the index is more than 5 minutes old, the hook fork-detaches an incremental refresh. Only changed files re-embed (matched on size + mtime); typical refresh of a repo where you edited 3 files re-embeds 3 files.</li>
+  <li><strong>Branch switches and bulk changes:</strong> every file's mtime changes, so the next refresh re-embeds everything that switched. Expected behavior; the current <code>rag &lt;q&gt;</code> uses whatever is in the index right now while the refresh runs in the background.</li>
 </ul>
 
 <p>The index lives at <code>&lt;project-root&gt;/.claude-rag-index/</code>, alongside your code. Copy a project folder to another machine and the index moves with it. Drop the directory to force a full rebuild.</p>
@@ -255,12 +262,18 @@
 <table>
   <thead><tr><th>Trigger</th><th>Effect</th></tr></thead>
   <tbody>
-    <tr><td><code>rag: &lt;text&gt;</code></td><td>Retrieve from the project root's index. Default form. Auto-indexes on first use.</td></tr>
+    <tr><td><code>rag &lt;text&gt;</code></td><td>Retrieve from the project root's index. Default form. Auto-indexes on first use.</td></tr>
+    <tr><td><code>rag: &lt;text&gt;</code></td><td>Same. The colon form is equivalent and predates the no-colon form.</td></tr>
     <tr><td><code>/rag &lt;text&gt;</code></td><td>Same, slash-command flavour.</td></tr>
+    <tr><td><code>rag</code> (alone)</td><td>Print index status. Never blocks, never runs retrieval. Same for <code>/rag</code>, <code>rag status</code>, and <code>rag:</code>.</td></tr>
     <tr><td><code>rag@&lt;tag&gt;: &lt;text&gt;</code></td><td>Federate retrieval across every store carrying <code>&lt;tag&gt;</code>. Bypasses auto-index; you have to have indexed the stores.</td></tr>
     <tr><td><code>rag@all: &lt;text&gt;</code></td><td>Federate across every registered store.</td></tr>
   </tbody>
 </table>
+
+<p>The bare <code>rag</code> form prints a compact status to your terminal and a verbose status block into the prompt so Claude can answer follow-ups (eg. "is the index ready yet?"). It never runs retrieval and never blocks.</p>
+
+<p>The no-colon form (<code>lax_trigger</code>) is on by default. Set <code>lax_trigger: false</code> in <code>~/.config/claude-rag-hook/config.yaml</code> to require the colon if you hit a false positive.</p>
 
 <h2>What you actually get</h2>
 
@@ -273,12 +286,12 @@
 
   <div class="card">
     <h3 style="margin-top:0">Auto-index on first use</h3>
-    <p>The first <code>rag:</code> in a project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves normally. Subsequent turns trigger throttled incremental refreshes so the index stays current as you edit.</p>
+    <p>The first <code>rag &lt;q&gt;</code> in a project folder fork-detaches a background indexer; the next one retrieves normally. Subsequent turns trigger throttled incremental refreshes so the index stays current as you edit.</p>
   </div>
 
   <div class="card">
     <h3 style="margin-top:0">Keyword-triggered, deterministic</h3>
-    <p>Type <code>rag:</code>, get retrieval. Don't, and the hook is a no-op. No model-decides debugging, no MCP tool definitions in every system prompt, no per-turn round trip on prompts that do not need RAG.</p>
+    <p>Type <code>rag</code>, get retrieval. Don't, and the hook is a no-op. No model-decides debugging, no MCP tool definitions in every system prompt, no per-turn round trip on prompts that do not need RAG.</p>
   </div>
 
   <div class="card">
@@ -315,7 +328,10 @@
 <pre><code>triggers:
   - "rag:"
   - "/rag"
+lax_trigger: true                # accept "rag &lt;q&gt;" without the colon
 top_k: 5
+retrieval:
+  timeout_seconds: 8             # max time the hook will hold Claude on retrieval
 embedder:
   kind: fastembed
   model: nomic-ai/nomic-embed-text-v1.5
@@ -335,15 +351,37 @@ walker:
   respect_gitignore: true
 daemon:
   idle_ttl_seconds: 1800
-  enabled: true</code></pre>
+  enabled: true
+notifications:
+  on_index_complete: true        # desktop notification (notify-send) on first index</code></pre>
+
+<h2>How it works under the hood</h2>
+
+<p>A few mechanics worth knowing, especially if the tool surprises you.</p>
+
+<ul class="tight">
+  <li><strong>The hook is synchronous.</strong> Claude Code calls it on every prompt and waits for it to finish before sending the prompt to Claude. The retrieval path is wall-clock-capped at <code>retrieval.timeout_seconds</code> (default 8s); cold-start fastembed model loads can exceed that on the first call after boot, so the hook gives up cleanly and Claude answers without retrieved context. Retry usually works (1-3s).</li>
+  <li><strong>Indexing is fork-detached.</strong> The hook forks a child, calls <code>setsid</code>, redirects stdio to <code>~/.cache/claude-rag-hook/indexer.log</code>, and the parent returns to Claude immediately. <strong>Cancelling your Claude prompt does not kill the indexer</strong>: it has already detached. To stop one: <code>pgrep -af claude_rag_hook</code> and <code>kill</code>.</li>
+  <li><strong>Progress and discoverability.</strong> While indexing runs, <code>&lt;scope&gt;/.claude-rag-index/.progress</code> gets updated; bare <code>rag</code> reports it. Non-rag prompts also get a small "[claude-rag-hook] heads-up: still indexing..." banner prepended so Claude (and you) are not in the dark. On first-index completion, the hook fires <code>notify-send</code> if it is on PATH (refreshes stay quiet).</li>
+</ul>
 
 <h2>Pairs with hydra-llm</h2>
 
-<p><a href="https://ra-yavuz.github.io/hydra-llm/">hydra-llm</a> is the sibling project for running local LLMs with RAG built in. claude-rag-hook integrates two ways:</p>
+<p><a href="https://ra-yavuz.github.io/hydra-llm/">hydra-llm</a> is the sibling project for running local LLMs with RAG built in. The two tools are designed to play together but are <strong>fully independent</strong>: each writes to its own index folder and neither auto-triggers the other.</p>
+
+<p>Two opt-in integration points:</p>
 
 <ul class="tight">
   <li><strong>Embedder reuse.</strong> Set <code>embedder.kind: hydra-llm</code> and <code>embedder.hydra_id: &lt;id&gt;</code>. The hook reads <code>~/.config/hydra-llm/embedders.yaml</code>, asks <code>hydra-llm rag info &lt;id&gt;</code> for the runtime port, and calls <code>/v1/embeddings</code>. The hook never starts or stops the container; you run <code>hydra-llm</code> normally.</li>
-  <li><strong>Store reuse.</strong> If a folder has a <code>.hydra-index/</code> instead of (or in addition to) a <code>.claude-rag-index/</code>, the hook reads it transparently. hydra-llm users do not have to re-index for Claude Code.</li>
+  <li><strong>Store reuse (read-only).</strong> If a folder has a <code>.hydra-index/</code> instead of (or alongside) a <code>.claude-rag-index/</code>, the hook reads it transparently when walking up looking for an index. hydra-llm users do not have to re-index for Claude Code.</li>
+</ul>
+
+<p>What does <strong>not</strong> happen automatically:</p>
+
+<ul class="tight">
+  <li>Indexing one folder with hydra-llm does <strong>not</strong> create a <code>.claude-rag-index/</code> there. claude-rag-hook only writes to its own directory.</li>
+  <li>Indexing with claude-rag-hook does <strong>not</strong> create a <code>.hydra-index/</code>. The interop is one-way: this hook reads hydra's stores; hydra does not (currently) read this hook's stores.</li>
+  <li>Running <code>hydra-llm</code> against project A while you have a Claude session in project B has no effect on B's index. Indexes are per-folder and isolated.</li>
 </ul>
 
 <h2>Privacy</h2>

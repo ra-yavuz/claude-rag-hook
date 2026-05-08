@@ -21,8 +21,10 @@ def test_all_tag():
     assert m is not None and m.tag == "all"
 
 
-def test_lax_disabled_by_default():
-    assert parse("rag tokens", ["rag:", "/rag"]) is None
+def test_lax_off_with_query_still_caller_choice():
+    # When `lax=False`, "rag tokens" (no colon) is not a query trigger.
+    # A user who turns off lax_trigger gets back the strict colon form.
+    assert parse("rag tokens", ["rag:", "/rag"], lax=False) is None
 
 
 def test_lax_enabled():
@@ -39,10 +41,46 @@ def test_leading_whitespace():
     assert m is not None and m.query == "tokens"
 
 
-def test_empty_query_returns_none():
-    assert parse("rag: ", ["rag:", "/rag"]) is None
+def test_empty_colon_query_is_status():
+    # `rag:` with nothing after no longer returns None; it's a bare form
+    # and routes to the status command.
+    m = parse("rag: ", ["rag:", "/rag"])
+    assert m is not None and m.command == "status"
 
 
 def test_case_insensitive():
     m = parse("RAG: tokens", ["rag:", "/rag"])
     assert m is not None and m.query == "tokens"
+
+
+# Bare-form (status command) cases.
+
+def test_bare_rag_is_status():
+    m = parse("rag", ["rag:", "/rag"])
+    assert m is not None and m.command == "status" and m.query == ""
+
+
+def test_bare_slash_rag_is_status():
+    m = parse("/rag", ["rag:", "/rag"])
+    assert m is not None and m.command == "status"
+
+
+def test_rag_status_word_is_status():
+    m = parse("rag status", ["rag:", "/rag"])
+    assert m is not None and m.command == "status"
+
+
+def test_slash_rag_status_word_is_status():
+    m = parse("/rag status", ["rag:", "/rag"])
+    assert m is not None and m.command == "status"
+
+
+def test_bare_rag_with_whitespace_is_status():
+    m = parse("   rag   ", ["rag:", "/rag"])
+    assert m is not None and m.command == "status"
+
+
+def test_rag_followed_by_text_is_query_not_status(lax_on=True):
+    # Sanity: "rag tokens" with lax=True is still a query, not status.
+    m = parse("rag tokens", ["rag:", "/rag"], lax=True)
+    assert m is not None and m.command is None and m.query == "tokens"

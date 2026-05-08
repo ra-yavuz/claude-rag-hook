@@ -12,7 +12,9 @@ processes; this module wraps it with:
 from __future__ import annotations
 
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import time
 import traceback
@@ -73,8 +75,22 @@ def _run_inline(scope: Path, kind: str) -> None:
                     pass
             progress_mod.write(index_dir, cur)
 
-        indexer.index_folder(scope, emb, opts, progress=_on_progress)
+        stats = indexer.index_folder(scope, emb, opts, progress=_on_progress)
         progress_mod.mark_refresh(index_dir)
+
+        last_run = progress_mod.LastRun(
+            finished_at=time.time(),
+            elapsed_seconds=max(0.0, time.time() - prog.started_at),
+            kind=kind,
+            files_total=int(stats.get("files_total") or 0),
+            files_indexed=int(stats.get("files_indexed") or 0),
+            files_pruned=int(stats.get("files_pruned") or 0),
+            chunks_added=int(stats.get("chunks_added") or 0),
+        )
+        progress_mod.write_last_run(index_dir, last_run)
+
+        _maybe_notify(scope, kind, last_run, cfg)
+
         # Successful run: clear the in-progress marker.
         progress_mod.clear(index_dir)
     except Exception as e:
@@ -149,6 +165,37 @@ def fork_detach_index(scope: Path, kind: str = "indexing") -> int | None:
 
     _run_inline(scope, kind)
     os._exit(0)
+
+
+def _maybe_notify(scope: Path, kind: str, run: progress_mod.LastRun, cfg) -> None:
+    """Fire a desktop notification on initial-index completion.
+
+    Refreshes are intentionally quiet (they happen every 5 min). Only the
+    first-build "indexing" run gets a notification. Disable via
+    `notifications.on_index_complete: false` in config.
+    """
+    if kind != "indexing":
+        return
+    if not bool(cfg.get("notifications", "on_index_complete", default=True)):
+        return
+    notify_send = shutil.which("notify-send")
+    if not notify_send:
+        return
+    summary = "claude-rag-hook"
+    body = (
+        f"{scope.name} indexed: {run.chunks_added} chunks across "
+        f"{run.files_indexed} files ({int(run.elapsed_seconds)}s)"
+    )
+    try:
+        subprocess.Popen(
+            [notify_send, "--app-name=claude-rag-hook", "-u", "low", summary, body],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+    except OSError:
+        pass
 
 
 def maybe_refresh(scope: Path) -> None:

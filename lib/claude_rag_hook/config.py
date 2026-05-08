@@ -50,6 +50,20 @@ DEFAULTS: dict[str, Any] = {
         "footer": "</context>",
         "show_source_lines": True,
     },
+    "retrieval": {
+        # Hard wall-clock cap on the synchronous retrieval path. If the
+        # embedder / vector store takes longer than this (cold-start
+        # fastembed, slow disk, hung daemon), the hook gives up and lets
+        # Claude answer without retrieved context. The user sees a stderr
+        # note telling them the index is fine, just slow this turn.
+        "timeout_seconds": 8,
+    },
+    "notifications": {
+        # Desktop notification (notify-send) when initial indexing of a
+        # new project finishes. Refreshes stay quiet. Off automatically
+        # if notify-send isn't on PATH.
+        "on_index_complete": True,
+    },
 }
 
 

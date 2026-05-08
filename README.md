@@ -1,12 +1,13 @@
 # claude-rag-hook
 
-> **Type `rag: <question>` in Claude Code. Get a retrieval-augmented answer.**
+> **Type `rag <question>` in Claude Code. Get a retrieval-augmented answer.**
 >
 > A `UserPromptSubmit` hook for Claude Code that does keyword-triggered local
-> RAG. The first `rag:` inside any project folder auto-indexes that folder
-> in the background; the next `rag:` retrieves relevant chunks and prepends
-> them to the prompt before Claude sees it. Local-first, deterministic, zero
-> token overhead on prompts that do not start with the trigger.
+> RAG. The first `rag` query inside any project folder auto-indexes that
+> folder in the background; the next `rag <q>` retrieves relevant chunks and
+> prepends them to the prompt before Claude sees it. Local-first,
+> deterministic, zero token overhead on prompts that do not start with the
+> trigger.
 
 ## What you do
 
@@ -19,31 +20,46 @@ Code session, inside any project folder (one with a `.git`,
 `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc.), type:
 
 ```text
-> rag: where do we handle auth tokens?
+> rag where do we handle auth tokens?
 ```
 
 First time in that folder, the hook fork-detaches a background indexer and
 your current prompt passes through unchanged so you still get an answer.
-The next `rag:` actually retrieves and prepends the relevant code/text
+The next `rag <q>` actually retrieves and prepends the relevant code/text
 chunks to your prompt. No commands to run, no settings to edit.
+
+To check what the hook is up to at any point, type `rag` alone:
+
+```text
+> rag
+[claude-rag-hook status]
+scope: /home/you/projects/widgets
+state: ready
+chunks: 4231
+files: 312
+last_run: indexing (8m ago, took 47s)
+```
+
+When indexing is still running, the same command shows live progress
+(`indexing, 1240/3500 files, 2m elapsed, log: ~/.cache/claude-rag-hook/indexer.log`).
 
 ## How indexing handles changes
 
-- **First `rag:` in a folder:** auto-indexes that folder's project root in
+- **First `rag <q>` in a folder:** auto-indexes that folder's project root in
   the background (~30s for a small repo, longer for big ones). Your current
-  turn is not blocked; subsequent `rag:` turns benefit from the index.
-- **Subsequent `rag:` turns:** if the index is more than 5 minutes old,
+  turn is not blocked; subsequent `rag <q>` turns benefit from the index.
+- **Subsequent `rag <q>` turns:** if the index is more than 5 minutes old,
   fork-detach an incremental refresh in the background. Only changed files
   re-embed (matched on size + mtime), so a typical refresh of a repo where
   you edited 3 files re-embeds 3 files.
 - **Branch switch / mass file changes:** every file's mtime changes when
   git checks it out, so the next refresh re-embeds everything that
-  switched. Expected behavior; the current `rag:` uses whatever's in the
+  switched. Expected behavior; the current `rag <q>` uses whatever's in the
   index right now while the refresh runs in the background.
 
 The index lives at `<project-root>/.claude-rag-index/`. Copy a project
 folder to another machine and the index moves with it. `git rm -rf
-.claude-rag-index/` to drop it; the next `rag:` will rebuild.
+.claude-rag-index/` to drop it; the next `rag <q>` will rebuild.
 
 ## Safety rails (auto-index will NOT run on)
 
@@ -81,21 +97,30 @@ func authenticate(r *http.Request) (*User, error) { ... }
 
 Claude Code appends the hook's stdout to your prompt as a system reminder,
 so Claude reads the chunks above your question. Prompts that do not start
-with `rag:` (or `/rag`, or `rag@<tag>:`) pass through with zero token
-overhead.
+with a trigger keyword pass through with zero token overhead.
 
 ## Trigger forms
 
 | Trigger | Effect |
 |---|---|
-| `rag: <text>` | Retrieve from the project root's index. Default form. |
+| `rag <text>` | Retrieve from the project root's index. Default form. |
+| `rag: <text>` | Same. The colon form is equivalent and predates the no-colon form. |
 | `/rag <text>` | Same, slash-command flavour. |
+| `rag` (alone) | Print index status. Never blocks, never runs retrieval. Same for `/rag`, `rag status`, and `rag:`. |
 | `rag@<tag>: <text>` | Federate retrieval across every store carrying `<tag>`. |
 | `rag@all: <text>` | Federate across every registered store. |
 
+The bare-`rag` status form is the one to reach for when you want to know
+whether indexing is still running, whether retrieval is ready, or where
+the indexer log lives. Output goes both to your terminal (compact line)
+and into the prompt (verbose status block) so Claude can answer follow-ups.
+
 The `@<tag>` forms bypass auto-index; they assume you have already indexed
-the stores you care about (rare; mostly for advanced users running with
-hydra-llm). Default `rag:` is the one to remember.
+the stores you care about. Mostly for users running with `hydra-llm`.
+
+`lax_trigger` (the no-colon form) is **on by default**. If you want to
+turn it off, set `lax_trigger: false` in `~/.config/claude-rag-hook/config.yaml`
+and use `rag: <q>` or `/rag <q>` instead.
 
 ## What the apt install actually does
 
@@ -108,8 +133,8 @@ hydra-llm). Default `rag:` is the one to remember.
 - Pulls in `python3-yaml`, `python3-numpy`, `python3-pathspec` from the
   Debian archive.
 - Does NOT pull `fastembed` / `lancedb` / `pyarrow` (not packaged for
-  Debian). The first time you trigger `rag:`, the hook will tell you
-  about a one-time `pip install --user fastembed lancedb pyarrow`.
+  Debian). The first time you trigger a `rag <q>`, the hook will tell
+  you about a one-time `pip install --user fastembed lancedb pyarrow`.
 
 ## Configuration (optional)
 
@@ -118,7 +143,10 @@ file is not an error. Override only what you need:
 
 ```yaml
 triggers: ["rag:", "/rag"]
+lax_trigger: true                 # accept "rag <q>" without the colon
 top_k: 5
+retrieval:
+  timeout_seconds: 8              # max time the hook will hold Claude on retrieval
 embedder:
   kind: fastembed                 # or: openai-compatible, hydra-llm
   model: nomic-embed-text-v1.5
@@ -128,22 +156,92 @@ chunking:
 walker:
   max_file_size_mb: 1
   respect_gitignore: true
+notifications:
+  on_index_complete: true         # desktop notification (notify-send) on first index
 ```
+
+## How it works under the hood
+
+A few mechanics worth knowing, especially if the tool surprises you.
+
+**The hook runs synchronously on every prompt.** Claude Code calls it,
+waits for it to finish, then sends your prompt (plus whatever the hook
+printed to stdout) to Claude. So a slow hook is a slow turn. The
+retrieval path is wall-clock-capped at `retrieval.timeout_seconds`
+(default 8s). Cold-start fastembed model loads can exceed that on the
+first call after boot; the hook gives up cleanly and Claude answers
+without retrieved context. Try `rag <q>` again and the second call is
+typically 1-3s.
+
+**Indexing is fork-detached.** When the hook decides to index a folder,
+it forks a child process, calls `setsid` to put it in a new session,
+redirects stdio to `~/.cache/claude-rag-hook/indexer.log`, and the
+parent returns to Claude Code immediately. The child then walks, embeds,
+and writes the LanceDB table. **Cancelling your Claude prompt does not
+kill the indexer**: it has already detached. If you want to stop a
+running indexing job, find it with `pgrep -af claude_rag_hook` and
+`kill` it.
+
+**Progress and discoverability.** While an indexing job runs, the
+indexer writes a JSON file at `<scope>/.claude-rag-index/.progress`
+that the hook reads on every subsequent invocation. Bare `rag` reports
+this state. Non-`rag` prompts also get a small "[claude-rag-hook]
+heads-up: still indexing..." banner prepended so Claude (and you) are
+not in the dark. When indexing finishes, the hook fires a desktop
+notification via `notify-send` if it is on PATH (one-time only, refreshes
+stay silent). Disable with `notifications.on_index_complete: false`.
+
+**Where things live.**
+
+| Path | What |
+|---|---|
+| `<project>/.claude-rag-index/chunks.lance/` | the actual vector index (LanceDB) |
+| `<project>/.claude-rag-index/.progress` | live state of any running job |
+| `<project>/.claude-rag-index/.last_run.json` | stats from the most recent successful run |
+| `<project>/.claude-rag-index/.last_refresh` | timestamp of last refresh attempt |
+| `~/.cache/claude-rag-hook/indexer.log` | redirected stdout/stderr of the detached indexer |
+| `~/.cache/claude-rag-hook/embedder.log` | embedder daemon log |
+| `~/.config/claude-rag-hook/config.yaml` | optional user config |
+| `/etc/claude-code/managed-settings.json` | machine-wide hook wiring |
 
 ## Pairs with hydra-llm
 
 [hydra-llm](https://ra-yavuz.github.io/hydra-llm/) is the sibling project
-for running local LLMs with RAG built in. claude-rag-hook integrates two
-ways:
+for running local LLMs with RAG built in. The two tools are designed to
+play together but are fully independent: each one writes to its own
+index folder and neither auto-triggers the other.
+
+**Two opt-in integration points.**
 
 - **Embedder reuse:** set `embedder.kind: hydra-llm` and
-  `embedder.hydra_id: <id>`. The hook resolves the embedder via
-  `hydra-llm rag info <id>` and calls its `/v1/embeddings`.
-- **Store reuse:** if a folder has a `.hydra-index/` instead of a
-  `.claude-rag-index/`, claude-rag-hook reads it transparently. hydra-llm
-  users do not have to re-index for Claude Code.
+  `embedder.hydra_id: <id>` in claude-rag-hook's config. The hook then
+  resolves the embedder via `hydra-llm rag info <id>` and calls its
+  `/v1/embeddings`. You stop pulling fastembed via pip and reuse
+  whatever embedder you already run for hydra-llm.
+- **Store reuse (read-only):** if a folder has a `.hydra-index/` instead
+  of (or alongside) a `.claude-rag-index/`, claude-rag-hook reads it
+  transparently when walking up looking for an index. hydra-llm users
+  who have already indexed a folder do not need to re-index it for
+  Claude Code.
 
-Both are optional. Standalone use is the default.
+**What does NOT happen automatically.**
+
+- Indexing one folder with hydra-llm does **not** create a
+  `.claude-rag-index/` there. claude-rag-hook only writes to its own
+  directory.
+- Indexing one folder with claude-rag-hook does **not** create a
+  `.hydra-index/`. The interop direction is one-way: this hook reads
+  hydra's stores, hydra does not (currently) read this hook's stores.
+- Running `hydra-llm` against project A while you have a Claude session
+  in project B has no effect on B's index. The two indexes are
+  per-folder and isolated.
+
+If you only see one tool today and want to know whether the index in
+`<project>/.claude-rag-index/` came from hydra-llm: it didn't. That
+directory is only ever written by claude-rag-hook itself. The hydra
+equivalent is `.hydra-index/`.
+
+Both integrations are optional. Standalone use is the default.
 
 ## Disclaimer / no warranty
 

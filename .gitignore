@@ -25,3 +25,6 @@ WORKINGDIR/
 
 # Local Claude harness scratch
 .claude/
+
+# Operator-only release notes (uncommitted)
+RELEASE.md

@@ -21,7 +21,26 @@ from pathlib import Path
 
 PROGRESS_FILE = ".progress"
 LAST_REFRESH_FILE = ".last_refresh"
+LAST_RUN_FILE = ".last_run.json"
 REFRESH_INTERVAL_SECONDS = 300  # 5 minutes
+
+
+@dataclass
+class LastRun:
+    """Stats from the most recent successful indexing/refresh.
+
+    Used by the bare-`rag` status command to print concrete numbers
+    ("4231 chunks across 312 files, last refreshed 8 min ago") instead
+    of just "ready".
+    """
+
+    finished_at: float = 0.0
+    elapsed_seconds: float = 0.0
+    kind: str = ""           # "indexing" | "refreshing"
+    files_total: int = 0
+    files_indexed: int = 0
+    files_pruned: int = 0
+    chunks_added: int = 0
 
 
 @dataclass
@@ -111,3 +130,28 @@ def needs_refresh(index_dir: Path, interval: float = REFRESH_INTERVAL_SECONDS) -
     except (OSError, ValueError):
         return True
     return (time.time() - last) >= interval
+
+
+def _last_run_path(index_dir: Path) -> Path:
+    return index_dir / LAST_RUN_FILE
+
+
+def write_last_run(index_dir: Path, run: LastRun) -> None:
+    index_dir.mkdir(parents=True, exist_ok=True)
+    p = _last_run_path(index_dir)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(asdict(run), f)
+    tmp.replace(p)
+
+
+def read_last_run(index_dir: Path) -> LastRun | None:
+    p = _last_run_path(index_dir)
+    if not p.exists():
+        return None
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return LastRun(**{k: v for k, v in data.items() if k in LastRun.__annotations__})
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None

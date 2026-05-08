@@ -1,3 +1,37 @@
+claude-rag-hook (0.3.0-1) unstable; urgency=low
+
+  * UX: bare `rag` (or `/rag`, `rag status`, `rag:`) is now a status
+    command. Reports index location, ready/indexing/error state, files
+    and chunks counts, last-run timing, indexer log path. Output goes
+    to both stderr (compact terminal line) and stdout (verbose status
+    block) so Claude can answer follow-up questions about the index.
+    Never blocks, never runs retrieval.
+  * Reliability: retrieval is now wall-clock-capped at
+    `retrieval.timeout_seconds` (default 8s). Cold-start fastembed
+    model loads on the first call after boot used to hold Claude for
+    tens of seconds with no signal; the hook now gives up cleanly,
+    falls through, and tells the user what happened. Retry usually
+    succeeds in 1-3s.
+  * Discoverability: when the hook fork-detaches an indexer, the stderr
+    nudge now ends with "type `rag` (alone) any time to check
+    progress" so users who miss the initial message can rediscover it.
+  * Awareness: when a non-rag prompt is submitted while a background
+    indexer is still running, the hook prepends a small "[claude-rag-hook]
+    heads-up: still indexing..." banner to stdout so Claude (and the
+    user) know the detached job is still working.
+  * Notifications: on first-time-index completion, the hook fires a
+    desktop notification via notify-send if it is on PATH. Refreshes
+    stay quiet. Disable with `notifications.on_index_complete: false`.
+  * Run stats: indexer now writes a `.last_run.json` next to the
+    `.progress` file so `rag` (status) can report concrete numbers.
+  * Docs: README + Pages site updated. New "How it works under the
+    hood" section explains synchronous-hook timing, fork-detach
+    behavior, where progress and logs live. Hydra-llm interop section
+    expanded to spell out independence of indexes between the two
+    tools.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 06:45:00 +0000
+
 claude-rag-hook (0.2.1-1) unstable; urgency=low
 
   * Fix: auto-index incorrectly refused direct children of $HOME, even
