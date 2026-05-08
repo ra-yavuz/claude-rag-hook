@@ -106,14 +106,18 @@ with a trigger keyword pass through with zero token overhead.
 | `rag <text>` | Retrieve from the project root's index. Default form. |
 | `rag: <text>` | Same. The colon form is equivalent and predates the no-colon form. |
 | `/rag <text>` | Same, slash-command flavour. |
-| `rag` (alone) | Print index status. Never blocks, never runs retrieval. Same for `/rag`, `rag status`, and `rag:`. |
+| `rag` (alone) | Print index status. If no index exists yet, kick off indexing. **Ends the turn without invoking the model**, so it costs zero tokens. Same for `/rag`, `rag status`, and `rag:`. |
 | `rag@<tag>: <text>` | Federate retrieval across every store carrying `<tag>`. |
 | `rag@all: <text>` | Federate across every registered store. |
 
-The bare-`rag` status form is the one to reach for when you want to know
-whether indexing is still running, whether retrieval is ready, or where
-the indexer log lives. Output goes both to your terminal (compact line)
-and into the prompt (verbose status block) so Claude can answer follow-ups.
+The bare-`rag` status form is a CLI command, not a question for Claude.
+The hook returns a `decision: "block"` envelope (Claude Code's documented
+short-circuit) so the model is not invoked: zero tokens spent, no Claude
+paraphrase, the user just sees the status text and the turn ends.
+
+When you bare-`rag` in a folder that has no index yet, the hook also
+fork-detaches the indexer right then, so a single `rag` is enough to
+get setup started.
 
 The `@<tag>` forms bypass auto-index; they assume you have already indexed
 the stores you care about. Mostly for users running with `hydra-llm`.

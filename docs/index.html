@@ -100,7 +100,7 @@
   "description": "A UserPromptSubmit hook for Anthropic's Claude Code that does keyword-triggered local retrieval-augmented generation. apt install wires the hook into Claude Code for every user on the machine. Type 'rag: <question>' inside any project folder; the hook auto-indexes that folder on first use, then retrieves the top-K relevant chunks from a per-folder LanceDB index and prepends them to the prompt as a context block before Claude sees it. Local-first, deterministic, zero token overhead on prompts that do not start with the trigger.",
   "url": "https://ra-yavuz.github.io/claude-rag-hook/",
   "downloadUrl": "https://github.com/ra-yavuz/claude-rag-hook/releases",
-  "softwareVersion": "0.3.0",
+  "softwareVersion": "0.3.1",
   "license": "https://opensource.org/licenses/MIT",
   "author": { "@type": "Person", "name": "Ramazan Yavuz", "url": "https://ra-yavuz.github.io/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -171,7 +171,7 @@
 
 <picture><source srcset="logo.webp" type="image/webp"><img class="brand" src="logo.png" alt="claude-rag-hook logo: angle brackets framing a hook that catches a chunk of text"></picture>
 
-<h1>claude-rag-hook <span class="pill new">v0.3.0</span></h1>
+<h1>claude-rag-hook <span class="pill new">v0.3.1</span></h1>
 <p class="tag">apt install. Type <code>rag &lt;q&gt;</code> in Claude Code. Done.</p>
 <p class="subtag">A <code>UserPromptSubmit</code> hook for Anthropic's <a href="https://docs.claude.com/en/docs/claude-code/overview">Claude Code</a> that does keyword-triggered local RAG. <code>apt install claude-rag-hook</code> wires the hook into Claude Code for every user on the machine. The first <code>rag:</code> inside any project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves the top relevant chunks from a per-folder <a href="https://lancedb.com">LanceDB</a> index and prepends them to the prompt before Claude sees it. Cheap, deterministic, local-first. Prompts that do not start with the trigger pass through with zero token overhead.</p>
 
@@ -265,13 +265,13 @@
     <tr><td><code>rag &lt;text&gt;</code></td><td>Retrieve from the project root's index. Default form. Auto-indexes on first use.</td></tr>
     <tr><td><code>rag: &lt;text&gt;</code></td><td>Same. The colon form is equivalent and predates the no-colon form.</td></tr>
     <tr><td><code>/rag &lt;text&gt;</code></td><td>Same, slash-command flavour.</td></tr>
-    <tr><td><code>rag</code> (alone)</td><td>Print index status. Never blocks, never runs retrieval. Same for <code>/rag</code>, <code>rag status</code>, and <code>rag:</code>.</td></tr>
+    <tr><td><code>rag</code> (alone)</td><td>Print index status. If no index exists yet, kick off indexing. <strong>Ends the turn without invoking the model</strong> (zero tokens). Same for <code>/rag</code>, <code>rag status</code>, and <code>rag:</code>.</td></tr>
     <tr><td><code>rag@&lt;tag&gt;: &lt;text&gt;</code></td><td>Federate retrieval across every store carrying <code>&lt;tag&gt;</code>. Bypasses auto-index; you have to have indexed the stores.</td></tr>
     <tr><td><code>rag@all: &lt;text&gt;</code></td><td>Federate across every registered store.</td></tr>
   </tbody>
 </table>
 
-<p>The bare <code>rag</code> form prints a compact status to your terminal and a verbose status block into the prompt so Claude can answer follow-ups (eg. "is the index ready yet?"). It never runs retrieval and never blocks.</p>
+<p>The bare <code>rag</code> form is a CLI command, not a question for Claude. The hook returns a <code>decision: "block"</code> envelope so the model is not invoked: the user sees the status text and the turn ends with zero tokens spent. If no index exists yet, the same bare <code>rag</code> also fork-detaches the indexer.</p>
 
 <p>The no-colon form (<code>lax_trigger</code>) is on by default. Set <code>lax_trigger: false</code> in <code>~/.config/claude-rag-hook/config.yaml</code> to require the colon if you hit a false positive.</p>
 

@@ -1,3 +1,22 @@
+claude-rag-hook (0.3.1-1) unstable; urgency=low
+
+  * UX: bare `rag` now uses Claude Code's documented `decision: "block"`
+    envelope so the model is not invoked. The user sees the status
+    text directly; no tokens spent, no Claude paraphrase, no
+    cross-purpose advice from a confused model. (In v0.3.0 the status
+    text leaked into the prompt and Claude tried to relay it.)
+  * UX: bare `rag` in a folder with no index yet now kicks off the
+    indexer immediately. A single `rag` is enough to get setup
+    started; you no longer have to invent a throwaway query for the
+    first invocation.
+  * UX: `rag <q>` against a not-yet-indexed folder persists the query
+    as a "queued" replay hint. Once indexing finishes, the next
+    prompt the user submits surfaces a one-time banner ("indexing
+    complete; your earlier `rag <q>` is ready - type that again to
+    use it") so the user does not have to remember what they asked.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 07:30:00 +0000
+
 claude-rag-hook (0.3.0-1) unstable; urgency=low
 
   * UX: bare `rag` (or `/rag`, `rag status`, `rag:`) is now a status

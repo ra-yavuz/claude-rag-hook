@@ -10,25 +10,33 @@ Behavior on `rag <q>` / `rag: <q>` / `/rag <q>` / `rag@<tag>: <q>`:
        is past its refresh-throttle interval. Non-blocking.
 
 2. If no index exists:
-     - Run auto-index gates (no $HOME, no /etc, project marker required,
-       size cap).
-     - If gates pass: fork-detach a background indexer; print a one-line
-       stderr nudge that ends with "type `rag` to check progress"; pass
-       the prompt through unchanged so Claude still answers something.
-       Exit 0.
-     - If gates refuse: print the explanation on stderr, pass through.
-       Exit 0.
+     - Run auto-index gates. If they pass, fork-detach the indexer,
+       persist the user's query as a "queued" replay hint, and pass
+       through to Claude with a small note so Claude can answer from
+       training knowledge for this turn. On any subsequent prompt,
+       once indexing has finished, the hook prepends a one-time
+       "your earlier `rag <q>` is ready - type that again" banner.
 
-Bare `rag` / `/rag` / `rag status` is a status command:
-   - Prints a compact one-liner on stderr (user-facing).
-   - Prints a slightly more verbose status block on stdout so Claude
-     also knows the state of the index.
-   - Never runs retrieval. Never blocks.
+Bare `rag` / `/rag` / `rag status` is a status command. It uses the
+documented `decision: "block"` envelope so Claude Code ends the turn
+without invoking the model:
+
+   - If no index exists: kick off indexing in the background and tell
+     the user. Block the model.
+   - If indexing is in progress: report live progress. Block the model.
+   - If index is ready: report stats. Block the model.
+   - If last attempt errored: report the error and recovery hint.
+     Block the model.
 
 Indexing-banner: when a non-rag prompt is submitted while an indexing
 job is active, the hook prepends a small heads-up to stdout so Claude
 mentions it. This way the user is never in the dark about a running
-detached indexer they might have forgotten about.
+detached indexer.
+
+Completion-banner: when a non-rag prompt is submitted *after* indexing
+finishes and the user's earlier query is queued for replay, the hook
+prepends a one-time "indexing complete; your earlier rag <q> is ready"
+note.
 
 Non-trigger prompts otherwise produce no output and exit 0. The hook is
 fail-soft: any internal exception is logged on stderr and exits 0 so the
@@ -37,6 +45,7 @@ user always gets a response from Claude.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import multiprocessing
 import sys
@@ -52,6 +61,62 @@ from . import (
     runner,
     trigger,
 )
+
+
+def _emit_block(reason: str) -> int:
+    """Reply with a `decision: block` envelope so Claude Code ends the
+    turn without invoking the model. The `reason` field is shown to the
+    user in place of a Claude response.
+    """
+    sys.stdout.write(json.dumps({
+        "decision": "block",
+        "reason": reason,
+    }))
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+    return 0
+
+
+def _scope_hash(scope: Path) -> str:
+    """Stable short hash of an absolute path, for naming per-scope cache
+    files (queued query, last-seen marker)."""
+    return hashlib.sha1(str(scope.resolve()).encode("utf-8")).hexdigest()[:16]
+
+
+def _queued_query_path(scope: Path) -> Path:
+    return paths.cache_dir() / f"{_scope_hash(scope)}.queued_query"
+
+
+def _write_queued_query(scope: Path, query: str) -> None:
+    p = _queued_query_path(scope)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        p.write_text(query, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _read_queued_query(scope: Path) -> str | None:
+    p = _queued_query_path(scope)
+    try:
+        return p.read_text(encoding="utf-8").strip() or None
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _clear_queued_query(scope: Path) -> None:
+    try:
+        _queued_query_path(scope).unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def _start_indexing(scope: Path) -> None:
+    """Fork-detach an indexer for `scope`. Caller is responsible for
+    deciding whether to start one (e.g. checking is_active)."""
+    runner.fork_detach_index(scope, kind="indexing")
 
 
 def run(stdin_text: str, cwd: Path | None = None) -> int:
@@ -158,15 +223,28 @@ def run(stdin_text: str, cwd: Path | None = None) -> int:
         )
         return 0
 
-    # Kick off a fresh indexing job and tell the user.
-    runner.fork_detach_index(scope, kind="indexing")
+    # Kick off a fresh indexing job and tell the user. The user's query
+    # is persisted as a "queued" replay hint so a subsequent prompt can
+    # surface a one-time "your earlier rag <q> is ready" banner once
+    # indexing completes.
+    _start_indexing(scope)
+    _write_queued_query(scope, match.query)
     print(
         f"claude-rag-hook: indexing {scope} in the background. "
-        f"Retrieval will work on the next `rag <q>` once it finishes. "
         f"This is a one-time setup per project. "
         f"Type `rag` (alone) any time to check progress.",
         file=sys.stderr, flush=True,
     )
+    sys.stdout.write(
+        f"[claude-rag-hook] heads-up for Claude: the user typed "
+        f"`rag {match.query}` but no index exists for this folder yet. "
+        f"Indexing has just started in the background; retrieval will "
+        f"be available on the next `rag <q>` once it completes. Answer "
+        f"the user's question from your training knowledge for this "
+        f"turn, and tell them their earlier query will be ready to "
+        f"replay shortly.\n\n"
+    )
+    sys.stdout.flush()
     return 0
 
 
@@ -303,149 +381,114 @@ def _human_duration(seconds: float) -> str:
 
 
 def _emit_status(cwd: Path) -> int:
-    """Print the status of the index that covers `cwd`.
+    """Handle bare `rag` / `/rag` / `rag status`.
 
-    Output goes both to stderr (compact, user reads it directly in the
-    terminal) and stdout (slightly more verbose, becomes part of the
-    prompt so Claude can answer follow-up questions about it).
+    This is a CLI command, not a question for Claude. We use the
+    documented `decision: "block"` envelope so Claude Code ends the
+    turn without invoking the model. The user sees the status; no
+    tokens spent; no Claude paraphrase.
 
-    Never blocks: this is purely filesystem reads of the .progress and
-    .last_run.json files; no embedder, no LanceDB.
+    Behaviour by index state:
+
+    - No index, auto-index allowed: kick off indexing in the
+      background and tell the user. Block.
+    - No index, auto-index refused: explain why. Block.
+    - Indexing in progress: show live counters. Block.
+    - Last attempt errored: surface the error and recovery hint. Block.
+    - Index ready: report scope + counts + last-run time. Block.
+
+    All filesystem reads only; no embedder, no LanceDB.
     """
     existing = paths.find_index(cwd)
 
+    # No index anywhere up the tree.
     if existing is None:
-        # No index anywhere up the tree. Could we auto-index?
         decision = auto_index.decide(cwd)
         scope_desc = str(decision.scope) if decision.scope else str(cwd)
-        if decision.allow:
-            stderr_msg = (
-                f"claude-rag-hook: no index for {scope_desc} yet. "
-                f"Type `rag <question>` to start indexing in the background."
+
+        if not decision.allow:
+            return _emit_block(
+                f"claude-rag-hook: no index for this folder, and auto-index "
+                f"refused: {decision.reason}"
             )
-            stdout_msg = (
-                f"[claude-rag-hook status]\n"
-                f"index: not yet built for {scope_desc}\n"
-                f"action: type `rag <question>` to start a background indexing run.\n"
+
+        # Allowed. Kick off indexing now and tell the user.
+        scope = decision.scope
+        assert scope is not None
+        index_dir = scope / paths.INDEX_DIR_NAME
+
+        # If a previous attempt errored, surface that instead of starting
+        # another one that will hit the same wall.
+        last = progress_mod.read(index_dir) if index_dir.exists() else progress_mod.Progress()
+        if last.state == "error":
+            return _emit_block(
+                f"claude-rag-hook: previous indexing of {scope} failed: "
+                f"{last.message}\n"
+                f"  Log: {paths.cache_dir() / 'indexer.log'}\n"
+                f"  Common fix: pip install --user fastembed lancedb pyarrow\n"
+                f"  Then delete {index_dir}/.progress to retry."
             )
-        else:
-            stderr_msg = f"claude-rag-hook: no index, and auto-index refused: {decision.reason}"
-            stdout_msg = (
-                f"[claude-rag-hook status]\n"
-                f"index: none\n"
-                f"auto-index: refused ({decision.reason})\n"
-            )
-        print(stderr_msg, file=sys.stderr, flush=True)
-        sys.stdout.write(stdout_msg + "\n")
-        sys.stdout.flush()
-        return 0
+
+        if not progress_mod.is_active(index_dir):
+            _start_indexing(scope)
+        return _emit_block(
+            f"claude-rag-hook: indexing {scope_desc} in the background. "
+            f"This is a one-time setup. Type `rag` again to check progress, "
+            f"or type `rag <question>` once it finishes to retrieve."
+        )
 
     scope = existing.parent
     prog = progress_mod.read(existing)
     last_run = progress_mod.read_last_run(existing)
     is_active = progress_mod.is_active(existing)
-
     log_path = paths.cache_dir() / "indexer.log"
 
     if is_active:
-        # In progress. Show live counters.
         elapsed = _human_duration(time.time() - prog.started_at)
         verb = "indexing" if prog.state == "indexing" else "refreshing"
-        if prog.files_total > 0:
-            counter = f"{prog.files_done}/{prog.files_total} files"
-        else:
-            counter = f"{prog.files_done} files so far"
-        stderr_msg = (
-            f"claude-rag-hook: {verb} {scope}, {counter}, started {elapsed} ago. "
-            f"Log: {log_path}"
+        counter = (
+            f"{prog.files_done}/{prog.files_total} files"
+            if prog.files_total > 0
+            else f"{prog.files_done} files so far"
         )
-        stdout_msg = (
-            f"[claude-rag-hook status]\n"
-            f"scope: {scope}\n"
-            f"state: {verb} (in progress)\n"
-            f"progress: {counter}\n"
-            f"elapsed: {elapsed}\n"
-            f"log: {log_path}\n"
-            f"note: retrieval will work as soon as this completes; "
-            f"meanwhile your prompt passes through unchanged.\n"
+        return _emit_block(
+            f"claude-rag-hook: {verb} {scope}\n"
+            f"  progress: {counter}\n"
+            f"  elapsed: {elapsed}\n"
+            f"  log: {log_path}"
         )
-        print(stderr_msg, file=sys.stderr, flush=True)
-        sys.stdout.write(stdout_msg + "\n")
-        sys.stdout.flush()
-        return 0
 
     if prog.state == "error":
-        stderr_msg = (
-            f"claude-rag-hook: last indexing of {scope} failed: {prog.message}. "
-            f"See {log_path}. Delete {existing}/.progress to retry."
+        return _emit_block(
+            f"claude-rag-hook: last indexing of {scope} failed: {prog.message}\n"
+            f"  log: {log_path}\n"
+            f"  recover: pip install --user fastembed lancedb pyarrow, "
+            f"then delete {existing}/.progress to retry."
         )
-        stdout_msg = (
-            f"[claude-rag-hook status]\n"
-            f"scope: {scope}\n"
-            f"state: error\n"
-            f"message: {prog.message}\n"
-            f"log: {log_path}\n"
-            f"recover: install fastembed if missing "
-            f"(`pip install --user fastembed lancedb pyarrow`), "
-            f"then delete {existing}/.progress to retry.\n"
-        )
-        print(stderr_msg, file=sys.stderr, flush=True)
-        sys.stdout.write(stdout_msg + "\n")
-        sys.stdout.flush()
-        return 0
 
-    # Idle, populated (or possibly empty if no last_run yet).
+    # Idle.
     populated = _index_is_populated(existing)
     if last_run is not None:
         ago = _human_duration(time.time() - last_run.finished_at)
-        chunks = last_run.chunks_added
         files = last_run.files_indexed or last_run.files_total
-        stderr_msg = (
-            f"claude-rag-hook: index ready for {scope}. "
-            f"{chunks} chunks across {files} files; last {last_run.kind} {ago} ago."
+        return _emit_block(
+            f"claude-rag-hook: index ready for {scope}\n"
+            f"  chunks: {last_run.chunks_added}\n"
+            f"  files: {files}\n"
+            f"  last {last_run.kind}: {ago} ago "
+            f"(took {_human_duration(last_run.elapsed_seconds)})\n"
+            f"  type `rag <question>` to retrieve."
         )
-        stdout_msg = (
-            f"[claude-rag-hook status]\n"
-            f"scope: {scope}\n"
-            f"state: ready\n"
-            f"chunks: {chunks}\n"
-            f"files: {files}\n"
-            f"last_run: {last_run.kind} ({ago} ago, took "
-            f"{_human_duration(last_run.elapsed_seconds)})\n"
-            f"note: type `rag <question>` to retrieve. "
-            f"`rag` (alone) shows this status.\n"
+    if populated:
+        return _emit_block(
+            f"claude-rag-hook: index ready for {scope} (no run stats; built "
+            f"by an older version or another tool). Type `rag <question>` "
+            f"to retrieve."
         )
-    elif populated:
-        # Populated but no last_run.json (e.g. index built by an older
-        # version, or by hydra-llm).
-        stderr_msg = (
-            f"claude-rag-hook: index ready for {scope}. "
-            f"(No run stats available; index built by an older version or another tool.)"
-        )
-        stdout_msg = (
-            f"[claude-rag-hook status]\n"
-            f"scope: {scope}\n"
-            f"state: ready\n"
-            f"chunks: unknown (no run stats)\n"
-            f"note: type `rag <question>` to retrieve.\n"
-        )
-    else:
-        # Directory present but empty.
-        stderr_msg = (
-            f"claude-rag-hook: index folder at {existing} exists but is empty. "
-            f"Type `rag <question>` to (re)build."
-        )
-        stdout_msg = (
-            f"[claude-rag-hook status]\n"
-            f"scope: {scope}\n"
-            f"state: empty\n"
-            f"note: type `rag <question>` to (re)build the index.\n"
-        )
-
-    print(stderr_msg, file=sys.stderr, flush=True)
-    sys.stdout.write(stdout_msg + "\n")
-    sys.stdout.flush()
-    return 0
+    return _emit_block(
+        f"claude-rag-hook: index folder at {existing} exists but is empty. "
+        f"Type `rag <question>` to (re)build."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -454,36 +497,55 @@ def _emit_status(cwd: Path) -> int:
 
 
 def _maybe_emit_indexing_banner(cwd: Path) -> None:
-    """If a background indexer is running for this tree, prepend a one-line
-    banner so Claude knows. Cheap: only filesystem reads, no embedder.
+    """Surface background-indexer state on non-rag prompts.
 
-    Fires only when:
-    - There is an index folder at or above cwd.
-    - Its .progress file says state in {indexing, refreshing} and the
-      pid is alive.
-    - State is "indexing" (initial build), not "refreshing". Refreshes
-      run every 5 min and would be too noisy as banners.
+    Two banners can fire here, both via stdout (Claude sees them and
+    will mention to the user):
+
+    1. **Still-indexing banner.** Active indexing job for this tree,
+       state == "indexing" (initial build, not 5-min refresh).
+
+    2. **Completion banner.** Indexing has finished and there is a
+       queued query waiting to be replayed (the user's earlier
+       `rag <q>` that arrived before the index existed). Fires once,
+       then clears the queued file so the next prompt is silent.
     """
     existing = paths.find_index(cwd)
     if existing is None:
         return
-    if not progress_mod.is_active(existing):
-        return
-    prog = progress_mod.read(existing)
-    if prog.state != "indexing":
+
+    scope = existing.parent
+
+    # Case 1: still indexing.
+    if progress_mod.is_active(existing):
+        prog = progress_mod.read(existing)
+        if prog.state == "indexing":
+            elapsed = _human_duration(time.time() - prog.started_at)
+            counter = (
+                f"{prog.files_done}/{prog.files_total} files"
+                if prog.files_total > 0
+                else f"{prog.files_done} files so far"
+            )
+            sys.stdout.write(
+                f"[claude-rag-hook] heads-up for Claude: still indexing "
+                f"{scope} in the background ({counter}, {elapsed} elapsed). "
+                f"Retrieval via `rag <q>` will work as soon as it finishes. "
+                f"The user can type `rag` alone any time for live status.\n\n"
+            )
+            sys.stdout.flush()
         return
 
-    elapsed = _human_duration(time.time() - prog.started_at)
-    if prog.files_total > 0:
-        counter = f"{prog.files_done}/{prog.files_total} files"
-    else:
-        counter = f"{prog.files_done} files so far"
-    sys.stdout.write(
-        f"[claude-rag-hook] heads-up: still indexing {existing.parent} in the "
-        f"background ({counter}, {elapsed} elapsed). Retrieval via `rag <q>` "
-        f"will work as soon as it finishes. Type `rag` alone for status.\n\n"
-    )
-    sys.stdout.flush()
+    # Case 2: indexing has finished and a query is queued for replay.
+    queued = _read_queued_query(scope)
+    if queued and _index_is_populated(existing):
+        sys.stdout.write(
+            f"[claude-rag-hook] indexing complete for {scope}. The user's "
+            f"earlier query `rag {queued}` is now ready to retrieve - "
+            f"please tell them to type that again to use the freshly-built "
+            f"index. (This banner only fires once.)\n\n"
+        )
+        sys.stdout.flush()
+        _clear_queued_query(scope)
 
 
 def main(argv: list[str] | None = None) -> int:
