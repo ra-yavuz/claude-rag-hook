@@ -32,6 +32,13 @@ DEFAULTS: dict[str, Any] = {
         "document_prefix": "search_document: ",
         "base_url": "http://127.0.0.1:19080",
         "hydra_id": "nomic-embed-text",
+        # ONNX runtime allocates per-call workspace sized for the
+        # batch fastembed feeds it. Default fastembed batch_size is
+        # 256 which can ratchet RSS to 12+ GB during big indexing
+        # runs. Capping at 4 keeps peak ~1.6 GB at no measurable
+        # throughput cost. Power users on big-RAM hosts can crank
+        # this back up.
+        "fastembed_batch_size": 4,
     },
     "chunking": {
         "target_chars": 1500,

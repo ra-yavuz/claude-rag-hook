@@ -1,3 +1,20 @@
+claude-rag-hook (0.4.1-1) unstable; urgency=low
+
+  * Fix: indexer OOM on big repos. fastembed defaults to
+    embed(batch_size=256) internally; ONNX runtime allocates
+    per-call workspace sized for that batch. On a 768-dim
+    transformer that workspace is ~6 GB per call, ratcheting to
+    ~12 GB resident over a few calls. A 3815-file monorepo
+    indexed from a memory-capped cgroup (eg a konsole tab)
+    OOM-killed at file 651/3815. We now pass batch_size=4 to
+    the fastembed embed() call, which makes it run mini-batches
+    of 4 sequentially internally. Same total throughput
+    (compute-bound, not batch-overhead-bound), peak RSS ~1.6 GB.
+    New config knob `embedder.fastembed_batch_size` (default 4)
+    so power users on big-RAM hosts can crank it back up.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 19:15:00 +0000
+
 claude-rag-hook (0.4.0-1) unstable; urgency=low
 
   * New: operator CLI at /usr/bin/crh. Subcommands: status, index,

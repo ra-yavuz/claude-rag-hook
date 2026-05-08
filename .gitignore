@@ -28,6 +28,7 @@ WORKINGDIR/
 
 # Operator-only release notes (uncommitted)
 RELEASE.md
+RESUME.md
 
 # Local sandbox for trying the hook against synthetic content
 sandbox/

@@ -34,6 +34,7 @@ def resolve(embedder_cfg: dict[str, Any]) -> Embedder:
             model=embedder_cfg.get("model") or "nomic-ai/nomic-embed-text-v1.5",
             query_prefix=embedder_cfg.get("query_prefix") or "",
             document_prefix=embedder_cfg.get("document_prefix") or "",
+            fastembed_batch_size=embedder_cfg.get("fastembed_batch_size"),
         )
     if kind in {"openai-compatible", "http"}:
         from .http_backend import HttpEmbedder

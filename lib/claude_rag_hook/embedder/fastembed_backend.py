@@ -54,10 +54,27 @@ def _wipe_model_dir(cache_root: Path, model: str) -> None:
 class FastEmbedEmbedder:
     kind = "fastembed"
 
-    def __init__(self, model: str, query_prefix: str = "", document_prefix: str = ""):
+    # ONNX runtime allocates workspace per inference call sized for the
+    # batch fastembed hands it. Default fastembed batch_size is 256
+    # which on a 768-dim transformer balloons RSS by ~6GB per batch
+    # (~12GB ratchet over a few calls). Capping at 4 keeps per-call
+    # peak ~1.6GB at no measurable wall-clock cost (fastembed re-feeds
+    # mini-batches sequentially; throughput is bound by ONNX compute,
+    # not batch overhead). Power users can crank this back up with
+    # `embedder.fastembed_batch_size: 32` etc. in the config.
+    DEFAULT_FASTEMBED_BATCH_SIZE = 4
+
+    def __init__(self, model: str, query_prefix: str = "",
+                 document_prefix: str = "",
+                 fastembed_batch_size: int | None = None):
         self.model = model
         self.query_prefix = query_prefix
         self.document_prefix = document_prefix
+        self.fastembed_batch_size = (
+            fastembed_batch_size
+            if fastembed_batch_size and fastembed_batch_size > 0
+            else self.DEFAULT_FASTEMBED_BATCH_SIZE
+        )
         self._model: Any | None = None
         self._dim: int | None = None
 
@@ -107,7 +124,10 @@ class FastEmbedEmbedder:
         self._ensure_loaded()
         prefixed = [f"{self.document_prefix}{t}" for t in texts] if self.document_prefix else texts
         assert self._model is not None
-        return [list(map(float, v)) for v in self._model.embed(prefixed)]
+        return [
+            list(map(float, v))
+            for v in self._model.embed(prefixed, batch_size=self.fastembed_batch_size)
+        ]
 
     def embed_query(self, text: str) -> list[float]:
         self._ensure_loaded()
