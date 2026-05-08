@@ -27,9 +27,34 @@ DEFAULTS: dict[str, Any] = {
     "top_k": 5,
     "embedder": {
         "kind": "fastembed",
-        "model": "nomic-ai/nomic-embed-text-v1.5",
-        "query_prefix": "search_query: ",
-        "document_prefix": "search_document: ",
+        # Default model as of v0.5.0: BAAI/bge-small-en-v1.5.
+        # Why this default:
+        #   - 33M params (~4x smaller than nomic-embed-text-v1.5).
+        #   - 384-dim vectors (~2x smaller index on disk).
+        #   - Inference RSS roughly an order of magnitude lower, which
+        #     matters on 8-16 GB laptops where the previous nomic
+        #     default could OOM during big-repo indexing.
+        #   - MTEB retrieval scores within ~1 point of nomic on
+        #     English benchmarks; quality difference is negligible
+        #     for code search.
+        # Power users on big-RAM hosts who want nomic's longer 8192-
+        # token context or top-of-leaderboard quality can override
+        # in `~/.config/claude-rag-hook/config.yaml`:
+        #   embedder:
+        #     model: nomic-ai/nomic-embed-text-v1.5
+        #     query_prefix: "search_query: "
+        #     document_prefix: "search_document: "
+        # Migration: indexes built with a different embedder are
+        # incompatible (different dim, different vocab). The hook
+        # detects this on retrieval and asks for `crh refresh
+        # --rebuild`.
+        "model": "BAAI/bge-small-en-v1.5",
+        # BGE prefixes: query gets the BGE retrieval instruction,
+        # documents are encoded without any prefix per BGE upstream
+        # guidance (model card explicitly says no prefix on
+        # passages).
+        "query_prefix": "Represent this sentence for searching relevant passages: ",
+        "document_prefix": "",
         "base_url": "http://127.0.0.1:19080",
         "hydra_id": "nomic-embed-text",
         # ONNX runtime allocates per-call workspace sized for the

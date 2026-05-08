@@ -86,6 +86,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     i.add_argument("path", nargs="?", default=None, help="Path to index (default: cwd).")
     i.add_argument("--no-watch", action="store_true", help="Run quietly; no progress bar.")
+    i.add_argument("--rebuild", action="store_true",
+                   help="Drop any existing index and rebuild from scratch. "
+                        "Use this to migrate from a previous embedder.")
     i.add_argument("--json", action="store_true", help="Final summary as JSON instead of human text.")
     i.set_defaults(func=index_cmd.run_index)
 
@@ -97,6 +100,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument("path", nargs="?", default=None, help="Path to refresh (default: cwd).")
     r.add_argument("--no-watch", action="store_true", help="Run quietly; no progress bar.")
+    r.add_argument("--rebuild", action="store_true",
+                   help="Drop the existing index and rebuild from scratch. "
+                        "Use this to migrate from a previous embedder.")
     r.add_argument("--json", action="store_true", help="Final summary as JSON.")
     r.set_defaults(func=index_cmd.run_refresh)
 

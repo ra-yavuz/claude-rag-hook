@@ -134,7 +134,15 @@ crh tag <path> work         # tag a store for `rag@work: <q>` federation
 crh untag <path> work
 crh forget <path>           # delete an index, with confirmation
 crh doctor                  # diagnose: model cache, embedder, hook wiring, orphan procs
+
+crh refresh --rebuild       # drop the existing index and rebuild from scratch
+crh index --rebuild         # same on initial-index command
 ```
+
+`--rebuild` is the migration knob when the embedder model changes
+(eg. you switched the configured embedder, or upgraded across a
+release that changed the default). It re-embeds every file rather
+than skipping unchanged ones.
 
 Auto-refresh daemon (off by default, opt-in):
 
@@ -198,7 +206,10 @@ retrieval:
   timeout_seconds: 8              # max time the hook will hold Claude on retrieval
 embedder:
   kind: fastembed                 # or: openai-compatible, hydra-llm
-  model: nomic-embed-text-v1.5
+  model: BAAI/bge-small-en-v1.5   # default since v0.5.0; ~33M params, 384 dim
+  query_prefix: "Represent this sentence for searching relevant passages: "
+  document_prefix: ""             # BGE: no prefix on documents
+  fastembed_batch_size: 4         # ONNX workspace cap; raise on big-RAM hosts
 chunking:
   target_chars: 1500
   overlap_chars: 200
@@ -208,6 +219,23 @@ walker:
 notifications:
   on_index_complete: true         # desktop notification (notify-send) on first index
 ```
+
+To use the previous default (`nomic-embed-text-v1.5`, 137M params,
+768-dim, 8192-token context, ~1-point higher MTEB retrieval score):
+
+```yaml
+embedder:
+  kind: fastembed
+  model: nomic-ai/nomic-embed-text-v1.5
+  query_prefix: "search_query: "
+  document_prefix: "search_document: "
+```
+
+When you switch the configured embedder against an existing index,
+`crh status` will surface a one-line hint that the index was built
+with the previous embedder and tell you to run `crh refresh --rebuild`
+to migrate. Old indexes keep working until you migrate; the retrieval
+path picks the right embedder per-index from the recorded `meta.yaml`.
 
 ## How it works under the hood
 

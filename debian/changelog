@@ -1,3 +1,36 @@
+claude-rag-hook (0.5.0-1) unstable; urgency=low
+
+  * Default embedder switched from nomic-ai/nomic-embed-text-v1.5
+    to BAAI/bge-small-en-v1.5. Quality is essentially the same on
+    English retrieval (~62 vs 62.4 MTEB), but the new default has
+    33M parameters vs nomic's 137M, produces 384-dim vectors vs
+    768-dim, and runs in roughly an order of magnitude less RAM.
+    Index size on disk drops by about 2x. The driving constraint
+    is RAM-constrained machines (8-16 GB laptops): the previous
+    default could OOM during big-repo indexing even with the
+    v0.4.1 batch_size fix on top. v0.5.0 fits comfortably on
+    those hosts. Power users on big-RAM machines who want nomic's
+    longer 8192-token context or a 1-point-higher MTEB score can
+    override `embedder.model` in
+    ~/.config/claude-rag-hook/config.yaml; see the README for the
+    exact config block.
+  * Migration is automatic for existing indexes. The retrieval
+    path reads each index's recorded embedder from meta.yaml and
+    builds a matching embedder per-index, so indexes built before
+    the upgrade keep working without intervention. To migrate an
+    index to the new default for the RAM/disk benefits, run
+    `crh refresh --rebuild` (new flag).
+  * `crh status` surfaces an embedder-mismatch hint when an
+    existing index was built with a different model than the
+    user's currently configured default. The hint is informational
+    and points at `crh refresh --rebuild`.
+  * `crh index` and `crh refresh` accept a new `--rebuild` flag
+    that drops the existing chunks.lance and manifest, then runs
+    a full re-embed. Used for migrating between embedders or
+    forcing a clean rebuild after corruption.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 20:30:00 +0000
+
 claude-rag-hook (0.4.1-1) unstable; urgency=low
 
   * Fix: indexer OOM on big repos. fastembed defaults to

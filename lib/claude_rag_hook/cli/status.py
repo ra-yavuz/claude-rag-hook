@@ -16,8 +16,44 @@ import sys
 import time
 from pathlib import Path
 
-from .. import paths, progress as progress_mod, registry
+from .. import config as config_mod, paths, progress as progress_mod, registry, store
 from . import _common
+
+
+def _embedder_hint(index_dir: Path) -> dict:
+    """Compare the index's recorded embedder against the user's
+    currently configured one. Returns a dict with `recorded` (the
+    model the index was built with) and `configured` (what the user
+    would build with today). If they differ, the caller can surface
+    a hint that the user might want `crh refresh --rebuild`.
+
+    Pure filesystem reads; never loads an embedder.
+    """
+    out = {"recorded_kind": None, "recorded_model": None,
+           "recorded_dim": None, "configured_kind": None,
+           "configured_model": None, "mismatch": False}
+    try:
+        meta = store.read_meta(index_dir)
+        e = meta.get("embedder") or {}
+        if isinstance(e, dict):
+            out["recorded_kind"] = e.get("kind")
+            out["recorded_model"] = e.get("model")
+            out["recorded_dim"] = e.get("dim")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        cfg = config_mod.load()
+        cfg_emb = cfg.get("embedder", default={}) or {}
+        if isinstance(cfg_emb, dict):
+            out["configured_kind"] = cfg_emb.get("kind")
+            out["configured_model"] = cfg_emb.get("model")
+    except Exception:  # noqa: BLE001
+        pass
+    rk, rm = out["recorded_kind"], out["recorded_model"]
+    ck, cm = out["configured_kind"], out["configured_model"]
+    if rk and rm and ck and cm and (rk != ck or rm != cm):
+        out["mismatch"] = True
+    return out
 
 
 def _read_state(scope: Path) -> dict:
@@ -27,6 +63,7 @@ def _read_state(scope: Path) -> dict:
     last_run = progress_mod.read_last_run(index_dir)
     is_active = progress_mod.is_active(index_dir)
     populated = (index_dir / "chunks.lance").is_dir()
+    emb_hint = _embedder_hint(index_dir) if populated else {}
 
     if is_active:
         state = prog.state  # "indexing" or "refreshing"
@@ -74,6 +111,7 @@ def _read_state(scope: Path) -> dict:
         ),
         "log_path": str(paths.cache_dir() / "indexer.log"),
         "auto_refresh": (index_dir / ".auto-refresh").exists(),
+        "embedder": emb_hint,
     }
 
 
@@ -123,6 +161,17 @@ def _format_human(snap: dict) -> str:
         )
     if state == "ready":
         last = snap["last_run"]
+        emb = snap.get("embedder") or {}
+        mismatch_line = ""
+        if emb.get("mismatch"):
+            mismatch_line = (
+                f"\n        embedder: built with {emb.get('recorded_kind')}:"
+                f"{emb.get('recorded_model')}, but config now uses "
+                f"{emb.get('configured_kind')}:{emb.get('configured_model')}.\n"
+                f"        retrieval still works against this index. "
+                f"To migrate to the configured embedder, run "
+                f"`crh refresh --rebuild`."
+            )
         if last is not None:
             ago = _common.human_duration(last["ago_seconds"])
             took = _common.human_duration(last["elapsed_seconds"])
@@ -131,11 +180,13 @@ def _format_human(snap: dict) -> str:
                 f"[ready] {scope}{auto}\n"
                 f"        {last['chunks_added']} chunks across {files} files\n"
                 f"        last {last['kind']}: {ago} ago (took {took})"
+                f"{mismatch_line}"
             )
         return (
             f"[ready] {scope}{auto}\n"
             f"        index present (no run stats; built by an older "
             f"version or another tool)"
+            f"{mismatch_line}"
         )
     return f"[{state}] {scope}{auto}"
 

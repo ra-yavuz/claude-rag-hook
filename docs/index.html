@@ -100,7 +100,7 @@
   "description": "A UserPromptSubmit hook for Anthropic's Claude Code that does keyword-triggered local retrieval-augmented generation. apt install wires the hook into Claude Code for every user on the machine. Type 'rag: <question>' inside any project folder; the hook auto-indexes that folder on first use, then retrieves the top-K relevant chunks from a per-folder LanceDB index and prepends them to the prompt as a context block before Claude sees it. Local-first, deterministic, zero token overhead on prompts that do not start with the trigger.",
   "url": "https://ra-yavuz.github.io/claude-rag-hook/",
   "downloadUrl": "https://github.com/ra-yavuz/claude-rag-hook/releases",
-  "softwareVersion": "0.4.1",
+  "softwareVersion": "0.5.0",
   "license": "https://opensource.org/licenses/MIT",
   "author": { "@type": "Person", "name": "Ramazan Yavuz", "url": "https://ra-yavuz.github.io/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -171,7 +171,7 @@
 
 <picture><source srcset="logo.webp" type="image/webp"><img class="brand" src="logo.png" alt="claude-rag-hook logo: angle brackets framing a hook that catches a chunk of text"></picture>
 
-<h1>claude-rag-hook <span class="pill new">v0.4.1</span></h1>
+<h1>claude-rag-hook <span class="pill new">v0.5.0</span></h1>
 <p class="tag">apt install. Type <code>rag &lt;q&gt;</code> in Claude Code. Done.</p>
 <p class="subtag">A <code>UserPromptSubmit</code> hook for Anthropic's <a href="https://docs.claude.com/en/docs/claude-code/overview">Claude Code</a> that does keyword-triggered local RAG. <code>apt install claude-rag-hook</code> wires the hook into Claude Code for every user on the machine. The first <code>rag:</code> inside any project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves the top relevant chunks from a per-folder <a href="https://lancedb.com">LanceDB</a> index and prepends them to the prompt before Claude sees it. Cheap, deterministic, local-first. Prompts that do not start with the trigger pass through with zero token overhead.</p>
 
@@ -301,7 +301,7 @@
 
   <div class="card">
     <h3 style="margin-top:0">Pluggable embedders</h3>
-    <p>Default <a href="https://github.com/qdrant/fastembed">fastembed</a> with <code>nomic-ai/nomic-embed-text-v1.5</code> (no HF token needed). Or swap in any OpenAI-compatible <code>/v1/embeddings</code> server, or reuse a <a href="https://ra-yavuz.github.io/hydra-llm/">hydra-llm</a> embedder by id.</p>
+    <p>Default <a href="https://github.com/qdrant/fastembed">fastembed</a> with <code>BAAI/bge-small-en-v1.5</code> since v0.5.0 (33M params, 384 dim, ~67MB on disk). Override to <code>nomic-ai/nomic-embed-text-v1.5</code> (137M params, 768 dim, 8192-token context) or any OpenAI-compatible <code>/v1/embeddings</code> server, or reuse a <a href="https://ra-yavuz.github.io/hydra-llm/">hydra-llm</a> embedder by id.</p>
   </div>
 
   <div class="card">
@@ -334,12 +334,17 @@ retrieval:
   timeout_seconds: 8             # max time the hook will hold Claude on retrieval
 embedder:
   kind: fastembed
-  model: nomic-ai/nomic-embed-text-v1.5
+  model: BAAI/bge-small-en-v1.5     # default since v0.5.0
+  query_prefix: "Represent this sentence for searching relevant passages: "
+  document_prefix: ""               # BGE: no prefix on documents
+  fastembed_batch_size: 4
+  # To use the previous default (nomic, higher quality, 4x more RAM):
+  # model: nomic-ai/nomic-embed-text-v1.5
+  # query_prefix: "search_query: "
+  # document_prefix: "search_document: "
   # Or for an OpenAI-compatible local server:
   # kind: openai-compatible
   # base_url: http://127.0.0.1:19080
-  # query_prefix: "search_query: "
-  # document_prefix: "search_document: "
   # Or to reuse a hydra-llm embedder by id:
   # kind: hydra-llm
   # hydra_id: nomic-embed-text

@@ -36,10 +36,15 @@ def _print_redraw(line: str) -> None:
     sys.stdout.flush()
 
 
-def _run_inline(scope: Path, kind: str, watch: bool, want_json: bool) -> int:
+def _run_inline(scope: Path, kind: str, watch: bool, want_json: bool,
+                rebuild: bool = False) -> int:
     """Drive an indexing run synchronously in this process.
 
     `kind` is "indexing" (initial) or "refreshing" (incremental).
+    `rebuild`: when True, drop the existing chunks.lance and manifest
+    so the run re-embeds every file from scratch. Used for migrating
+    between embedders (the new embedder's vectors won't match the
+    old embedder's, so partial-update semantics don't apply).
     """
     index_dir = scope / paths.INDEX_DIR_NAME
     if progress_mod.is_active(index_dir):
@@ -88,7 +93,7 @@ def _run_inline(scope: Path, kind: str, watch: bool, want_json: bool) -> int:
         overlap_chars=int(cfg.get("chunking", "overlap_chars", default=200) or 200),
         max_file_size_mb=float(cfg.get("walker", "max_file_size_mb", default=1.0) or 1.0),
         respect_gitignore=bool(cfg.get("walker", "respect_gitignore", default=True)),
-        full_rebuild=False,
+        full_rebuild=rebuild,
     )
 
     last_redraw = 0.0
@@ -217,7 +222,11 @@ def run_index(args) -> int:
         return 2
     scope = decision.scope
     assert scope is not None
-    return _run_inline(scope, kind="indexing", watch=not args.no_watch, want_json=args.json)
+    return _run_inline(
+        scope, kind="indexing",
+        watch=not args.no_watch, want_json=args.json,
+        rebuild=getattr(args, "rebuild", False),
+    )
 
 
 def run_refresh(args) -> int:
@@ -230,4 +239,8 @@ def run_refresh(args) -> int:
         )
         return 2
     scope = existing.parent
-    return _run_inline(scope, kind="refreshing", watch=not args.no_watch, want_json=args.json)
+    return _run_inline(
+        scope, kind="refreshing",
+        watch=not args.no_watch, want_json=args.json,
+        rebuild=getattr(args, "rebuild", False),
+    )
