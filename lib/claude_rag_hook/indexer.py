@@ -8,12 +8,21 @@ the table.
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from . import chunker, paths, registry, store, walker
 from .embedder import Embedder
+
+# Per-file progress messages are throttled: emit at most once per
+# PROGRESS_THROTTLE_FILES files OR once per PROGRESS_THROTTLE_SECONDS,
+# whichever fires first. Keeps the .progress file from being rewritten
+# hundreds of times per second on small chunks while still letting the
+# user (and `rag` status) see meaningful live counters on big repos.
+PROGRESS_THROTTLE_FILES = 16
+PROGRESS_THROTTLE_SECONDS = 2.0
 
 
 @dataclass
@@ -91,7 +100,8 @@ def index_folder(
             "chunks_added": 0,
         }
 
-    say(f"embed: {len(to_index)} files to (re)index")
+    n_to_index = len(to_index)
+    say(f"embed: {n_to_index} files to (re)index")
 
     total_chunks = 0
     batch_texts: list[str] = []
@@ -110,7 +120,9 @@ def index_folder(
         batch_texts = []
         batch_meta = []
 
-    for f in to_index:
+    last_progress_at = time.monotonic()
+    last_progress_i = 0
+    for i, f in enumerate(to_index, start=1):
         try:
             text = f.path.read_text(encoding="utf-8", errors="replace")
         except OSError as e:
@@ -131,6 +143,20 @@ def index_folder(
             if len(batch_texts) >= opts.batch_size:
                 _flush()
         manifest[f.rel] = {"size": f.size, "mtime": f.mtime}
+
+        # Throttled per-file progress emission. The runner parses
+        # "progress: i/n files" lines and updates .progress so bare
+        # `rag` (status) and any future log tail show live counters
+        # instead of frozen "0/N".
+        now = time.monotonic()
+        if (
+            i - last_progress_i >= PROGRESS_THROTTLE_FILES
+            or now - last_progress_at >= PROGRESS_THROTTLE_SECONDS
+            or i == n_to_index
+        ):
+            say(f"progress: {i}/{n_to_index} files")
+            last_progress_at = now
+            last_progress_i = i
     _flush()
 
     store.write_meta(index_dir, embedder.kind, embedder.model, embedder.dim)

@@ -1,3 +1,16 @@
+claude-rag-hook (0.3.3-1) unstable; urgency=low
+
+  * Fix: indexer now emits throttled per-file progress messages
+    during the embed loop, so the .progress file actually reflects
+    live state. Before this, files_done was set to 0 at start and
+    never updated until the run finished, which meant bare `rag`
+    on a real repo (3000+ files) reported "0/3815 files" for the
+    entire 30-minute run and looked wedged. The throttle is "every
+    16 files OR every 2 seconds, whichever fires first" so the
+    progress file isn't rewritten thousands of times per second.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Fri, 08 May 2026 14:50:00 +0000
+
 claude-rag-hook (0.3.2-1) unstable; urgency=low
 
   * Fix: fastembed model cache no longer lives in /tmp, where it gets

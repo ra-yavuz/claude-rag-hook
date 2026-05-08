@@ -54,25 +54,31 @@ def _run_inline(scope: Path, kind: str) -> None:
             full_rebuild=False,
         )
 
-        # tee the indexer's progress messages into our progress file so the
-        # hook can show "indexing, 1234/5000 files".
+        # tee the indexer's progress messages into our progress file so
+        # bare `rag` and any future log readers can see live counters.
+        # Three message shapes the indexer produces:
+        #   "walk: N candidate files"          -> files_total
+        #   "embed: N files to (re)index"      -> files_total
+        #   "progress: i/N files"              -> files_done, files_total
         def _on_progress(msg: str) -> None:
             cur = progress_mod.read(index_dir)
             cur.message = msg
-            # very cheap: parse the indexer's "embed: N files to (re)index"
-            # and "walk: N candidate files" lines for counts
-            if msg.startswith("walk:"):
+            if msg.startswith("walk:") or msg.startswith("embed:"):
                 parts = msg.split()
                 try:
                     cur.files_total = int(parts[1])
                 except (IndexError, ValueError):
                     pass
-            elif msg.startswith("embed:"):
+            elif msg.startswith("progress:"):
+                # "progress: 1240/3815 files"
                 parts = msg.split()
-                try:
-                    cur.files_total = int(parts[1])
-                except (IndexError, ValueError):
-                    pass
+                if len(parts) >= 2 and "/" in parts[1]:
+                    a, _, b = parts[1].partition("/")
+                    try:
+                        cur.files_done = int(a)
+                        cur.files_total = int(b)
+                    except ValueError:
+                        pass
             progress_mod.write(index_dir, cur)
 
         stats = indexer.index_folder(scope, emb, opts, progress=_on_progress)
