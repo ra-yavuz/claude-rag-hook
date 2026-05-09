@@ -13,4 +13,4 @@ Run the toggle and report the result.
 
 !`crh rag $ARGUMENTS`
 
-After the command output above, briefly tell the user the new state in one sentence and remind them they can re-run `/rag` any time to flip it back.
+After the command output above, briefly tell the user the new state in one sentence. Remind them they can re-run `/rag-toggle` any time to flip it back. They can also type `rag <q>` or `/rag <q>` (no toggle) for a one-shot retrieval at any time, regardless of toggle state.

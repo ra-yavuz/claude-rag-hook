@@ -1,3 +1,37 @@
+claude-rag-hook (0.6.1-1) unstable; urgency=high
+
+  * Critical fix: refuse to overwrite ~/.claude.json when it cannot be
+    parsed. The v0.6.0 self-install path treated any JSON decode error
+    as "empty file" and rewrote the file with only mcpServers, which
+    could destroy unrelated user state (other MCP servers, project
+    trust entries, OAuth session cache). The fix raises a ParseError
+    for non-empty unparseable files; ensure_registered/unregister
+    catch it and return False (no change). Affects any user whose
+    ~/.claude.json has had a transient malformed state during a hook
+    invocation. Recommended upgrade for everyone on v0.6.0.
+  * Fix: rename the bundled slash command from `/rag` to `/rag-toggle`
+    so it stops shadowing the documented `/rag <text>` retrieval form.
+    Existing users who installed v0.6.0's `~/.claude/commands/rag.md`
+    can leave it in place (it still works via the legacy filename) or
+    delete it; the hook will install `rag-toggle.md` on next run.
+  * Fix: never overwrite a user-owned ~/.claude/commands/rag-toggle.md.
+    The shipped file now carries a marker comment; we recognise our
+    own previous installs via that marker and update them, but leave
+    files without the marker alone forever.
+  * Fix: tar path-traversal guard in `crh import`. The startswith()
+    check let `<dest>-suffix/...` paths slip past the
+    `<dest>` prefix. Now uses Path.is_relative_to() which is
+    component-aware. tarfile's filter="data" already provides a second
+    layer of defence on Python 3.12+; this fixes the explicit guard.
+  * Fix: MCP rag_status no longer reports an empty-but-existing
+    .claude-rag-index/ directory as "ready". Mirrors the populated
+    check the hook already does. An aborted indexing attempt that
+    leaves the dir without a chunks.lance subdir is reported as
+    state: empty so Claude knows to ask the user to retry.
+  * Codex pass found and validated all five fixes.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Sat, 09 May 2026 13:00:00 +0000
+
 claude-rag-hook (0.6.0-1) unstable; urgency=low
 
   * New: bundled MCP server (claude-rag-mcp). Companion surface to

@@ -32,3 +32,4 @@ RESUME.md
 
 # Local sandbox for trying the hook against synthetic content
 sandbox/
+.bash_history

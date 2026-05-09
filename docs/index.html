@@ -231,10 +231,10 @@
 <ol class="tight">
   <li><strong>Keyword hook (cheap, deterministic).</strong> Type <code>rag &lt;q&gt;</code>. The hook embeds the query, retrieves chunks from a local LanceDB index, prepends them to your prompt. No tool-call round trip; no context injection on prompts that do not need RAG; no MCP tool definitions bloating every system prompt.</li>
   <li><strong>MCP server (claude-rag-mcp).</strong> Claude calls <code>rag_search</code> when it judges retrieval would help and the user did not type the keyword (or the keyword retrieval came up thin and Claude wants a follow-up search with a refined query). Saves tokens by letting one Claude turn refine its own retrieval instead of asking you to start over.</li>
-  <li><strong>Auto-rag mode.</strong> Type <code>/rag</code> inside Claude Code (or <code>crh rag on</code> from a shell) and every prompt becomes a <code>rag &lt;prompt&gt;</code> query, no keyword needed. Slash commands and very short prompts pass through untouched. Off by default; toggle once and it sticks across sessions.</li>
+  <li><strong>Auto-rag mode.</strong> Type <code>/rag-toggle</code> inside Claude Code (or <code>crh rag on</code> from a shell) and every prompt becomes a <code>rag &lt;prompt&gt;</code> query, no keyword needed. Slash commands and very short prompts pass through untouched. Off by default; toggle once and it sticks across sessions.</li>
 </ol>
 
-<p>The hook self-installs the MCP server entry into the user's <code>~/.claude.json</code> on first run (idempotent), and self-installs the <code>/rag</code> slash command into <code>~/.claude/commands/rag.md</code>. apt postinst handles the system-wide hook wiring; per-user pieces happen lazily on the next hook invocation, which is the only time we have ambient access to a user's home directory.</p>
+<p>The hook self-installs the MCP server entry into the user's <code>~/.claude.json</code> on first run (idempotent; refuses to write if the file is unparseable, so existing user state cannot be destroyed), and self-installs the <code>/rag-toggle</code> slash command into <code>~/.claude/commands/rag-toggle.md</code> with a clear marker so user edits survive future upgrades. apt postinst handles the system-wide hook wiring; per-user pieces happen lazily on the next hook invocation.</p>
 
 <p>How the original "no MCP" stance from v0.5 evolved: the keyword hook is still the primary, cheapest path. The MCP server is opt-out (default on) because the same retrieval index can answer one extra question Claude sometimes notices it needs without forcing the user to start a new turn. That saves tokens. Compose with model-decides peers like <a href="https://github.com/shinpr/mcp-local-rag">shinpr/mcp-local-rag</a>, <a href="https://github.com/ItMeDiaTech/rag-cli">ItMeDiaTech/rag-cli</a>, or <a href="https://github.com/zilliztech/claude-context">zilliztech/claude-context</a>: they each carry their own indexes and tool definitions, claude-rag-hook adds three small ones (<code>rag_search</code>, <code>rag_status</code>, <code>rag_list_stores</code>) on top of the keyword path.</p>
 
@@ -270,7 +270,7 @@
     <tr><td><code>rag: &lt;text&gt;</code></td><td>Same. The colon form is equivalent and predates the no-colon form.</td></tr>
     <tr><td><code>/rag &lt;text&gt;</code></td><td>Same, slash-command flavour.</td></tr>
     <tr><td><code>rag</code> (alone)</td><td>Print index status. If no index exists yet, kick off indexing. <strong>Ends the turn without invoking the model</strong> (zero tokens). Same for <code>rag status</code> and <code>rag:</code>.</td></tr>
-    <tr><td><code>/rag</code> (alone)</td><td>Toggle auto-rag mode (every prompt becomes a <code>rag</code> query, no keyword needed). Different from <code>rag</code> alone, which is the status report.</td></tr>
+    <tr><td><code>/rag-toggle</code></td><td>Toggle auto-rag mode (every prompt becomes a <code>rag</code> query, no keyword needed). Different from bare <code>rag</code>, which is the status report. Equivalent shell command: <code>crh rag toggle</code>.</td></tr>
     <tr><td><code>rag@&lt;tag&gt;: &lt;text&gt;</code></td><td>Federate retrieval across every store carrying <code>&lt;tag&gt;</code>. Bypasses auto-index; you have to have indexed the stores.</td></tr>
     <tr><td><code>rag@all: &lt;text&gt;</code></td><td>Federate across every registered store.</td></tr>
   </tbody>
@@ -285,7 +285,7 @@
 <p>Two persistent toggles live in <code>$XDG_STATE_HOME/claude-rag-hook/toggles.json</code>:</p>
 
 <ul class="tight">
-  <li><strong>auto-rag</strong> (default off): every prompt becomes a <code>rag</code> query, no keyword needed. Slash commands and very short prompts pass through untouched. Toggle inside Claude Code with <code>/rag</code>, or from a shell with <code>crh rag on|off|toggle|status</code>.</li>
+  <li><strong>auto-rag</strong> (default off): every prompt becomes a <code>rag</code> query, no keyword needed. Slash commands and very short prompts pass through untouched. Toggle inside Claude Code with <code>/rag-toggle</code>, or from a shell with <code>crh rag on|off|toggle|status</code>.</li>
   <li><strong>mcp</strong> (default on): the bundled MCP server is wired into <code>~/.claude.json</code> so Claude can call <code>rag_search</code> when it judges retrieval would help. Turn off with <code>crh mcp off</code>; the entry stays in <code>~/.claude.json</code> with a <code>CLAUDE_RAG_MCP_DISABLED=1</code> env block, so the toggle is fully reversible from the same place. Turn on with <code>crh mcp on</code>.</li>
 </ul>
 
@@ -347,7 +347,7 @@
 
   <div class="card">
     <h3 style="margin-top:0">Auto-rag mode (no keyword needed)</h3>
-    <p>Type <code>/rag</code> inside Claude Code to flip auto-rag on. Every subsequent prompt becomes a <code>rag &lt;prompt&gt;</code> query, no keyword required. Slash commands and very short prompts pass through untouched. Persistent across sessions.</p>
+    <p>Type <code>/rag-toggle</code> inside Claude Code to flip auto-rag on. Every subsequent prompt becomes a <code>rag &lt;prompt&gt;</code> query, no keyword required. Slash commands and very short prompts pass through untouched. Persistent across sessions.</p>
   </div>
 
   <div class="card">

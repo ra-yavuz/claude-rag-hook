@@ -41,7 +41,7 @@ install -m 0755 "$ROOT/bin/crh"                   "$PKG_DIR/usr/bin/crh"
 # /rag slash command markdown shipped under /usr/lib/claude-rag-hook/commands/.
 # The hook self-installs a copy into each user's ~/.claude/commands/ on
 # first invocation (idempotent; only writes when content differs).
-install -m 0644 "$ROOT/commands/rag.md" "$PKG_DIR/usr/lib/claude-rag-hook/commands/rag.md"
+install -m 0644 "$ROOT/commands/rag-toggle.md" "$PKG_DIR/usr/lib/claude-rag-hook/commands/rag-toggle.md"
 
 # systemd user unit for the auto-refresh daemon. Off by default;
 # users opt in with `crh refresher start` (which is `systemctl --user

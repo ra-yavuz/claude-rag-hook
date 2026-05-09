@@ -59,7 +59,7 @@ from .progress import read as read_progress, read_last_run, is_active
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "claude-rag-hook"
-SERVER_VERSION = "0.6.0"
+SERVER_VERSION = "0.6.1"
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +234,22 @@ def _tool_rag_search(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result("\n".join(lines), is_error=False)
 
 
+def _index_is_populated(index_dir: Path) -> bool:
+    """A `.claude-rag-index/` directory may exist without a populated
+    LanceDB table (an aborted indexing attempt leaves the dir but no
+    .lance subdirectory). Same check the hook uses; mirrored here so
+    rag_status doesn't say "ready" when there is no queryable data."""
+    if not index_dir.is_dir():
+        return False
+    try:
+        for entry in index_dir.iterdir():
+            if entry.is_dir() and entry.name.endswith(".lance"):
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def _tool_rag_status(args: dict[str, Any]) -> dict[str, Any]:
     scope = args.get("scope")
     cwd = _resolve_cwd(scope if isinstance(scope, str) else None)
@@ -248,6 +264,7 @@ def _tool_rag_status(args: dict[str, Any]) -> dict[str, Any]:
     prog = read_progress(idx)
     last = read_last_run(idx)
     active = is_active(idx)
+    populated = _index_is_populated(idx)
     parts = [f"rag_status: index for {project}"]
     if active:
         parts.append(f"  state: {prog.state} (in progress)")
@@ -255,6 +272,12 @@ def _tool_rag_status(args: dict[str, Any]) -> dict[str, Any]:
             parts.append(f"  progress: {prog.files_done}/{prog.files_total} files")
     elif prog.state == "error":
         parts.append(f"  state: error ({prog.message})")
+    elif not populated:
+        parts.append(
+            "  state: empty (directory exists but no LanceDB table; "
+            "indexing was aborted before any rows were written). "
+            "Tell the user to type `rag <question>` to rebuild."
+        )
     else:
         parts.append("  state: ready")
     if last is not None:

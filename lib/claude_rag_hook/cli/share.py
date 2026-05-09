@@ -164,11 +164,26 @@ def _extract_archive(src: Path, dest: Path) -> None:
 
 
 def _safe_extract(tar: tarfile.TarFile, dest: Path) -> None:
-    """Reject path-traversal entries before extracting."""
+    """Reject path-traversal entries before extracting.
+
+    Use is_relative_to (Python 3.9+) instead of a string startswith
+    check; startswith treats `/tmp/dest-abcd2/...` as a child of
+    `/tmp/dest-abcd`, which would be a real escape. is_relative_to
+    is path-component aware.
+    """
     dest_resolved = dest.resolve()
     for member in tar:
         member_path = (dest / member.name).resolve()
-        if not str(member_path).startswith(str(dest_resolved)):
+        try:
+            is_inside = member_path.is_relative_to(dest_resolved)
+        except AttributeError:
+            # Python <3.9 fallback (we declare 3.10 minimum, but be defensive).
+            try:
+                member_path.relative_to(dest_resolved)
+                is_inside = True
+            except ValueError:
+                is_inside = False
+        if not is_inside:
             raise RuntimeError(f"refusing to extract path traversal entry: {member.name}")
     tar.extractall(dest, filter="data")
 

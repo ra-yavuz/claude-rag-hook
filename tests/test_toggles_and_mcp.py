@@ -90,6 +90,67 @@ def test_mcp_unregister(fresh_state):
     assert mcp_register.unregister(claude_json=target) is False
 
 
+def test_mcp_register_refuses_to_overwrite_malformed_json(fresh_state):
+    """Critical safety: if the user's ~/.claude.json is malformed (mid-edit
+    save, trailing comma), we must not write anything. Overwriting would
+    destroy unrelated config (other MCP servers, project trust, OAuth).
+    """
+    target = fresh_state / "claudejson.json"
+    # Realistic malformed JSON: trailing comma after a real entry.
+    target.write_text(
+        '{"mcpServers": {"other": {"type": "stdio", "command": "/bin/x"},}}',
+    )
+    bytes_before = target.read_bytes()
+    # ensure_registered should return False (no change) without raising.
+    assert mcp_register.ensure_registered(claude_json=target) is False
+    # File contents must be byte-identical.
+    assert target.read_bytes() == bytes_before
+
+
+def test_mcp_register_refuses_to_overwrite_non_object_root(fresh_state):
+    target = fresh_state / "claudejson.json"
+    target.write_text('["not", "an", "object"]')
+    bytes_before = target.read_bytes()
+    assert mcp_register.ensure_registered(claude_json=target) is False
+    assert target.read_bytes() == bytes_before
+
+
+def test_mcp_unregister_refuses_to_overwrite_malformed_json(fresh_state):
+    target = fresh_state / "claudejson.json"
+    target.write_text('{"mcpServers": {"x":}}')
+    bytes_before = target.read_bytes()
+    assert mcp_register.unregister(claude_json=target) is False
+    assert target.read_bytes() == bytes_before
+
+
+def test_slash_command_does_not_overwrite_user_owned(fresh_state, tmp_path):
+    """If a user already has ~/.claude/commands/rag-toggle.md (no marker),
+    we must leave it alone."""
+    target_dir = tmp_path / "commands"
+    target_dir.mkdir()
+    target = target_dir / mcp_register._SLASH_COMMAND_FILENAME
+    user_content = "# my custom rag toggle\n\nDo my thing.\n"
+    target.write_text(user_content)
+    changed = mcp_register.ensure_slash_command(target_dir=target_dir)
+    assert changed is False
+    assert target.read_text() == user_content
+
+
+def test_slash_command_updates_our_own_marker(fresh_state, tmp_path):
+    """A previously-shipped file (carries our marker) is updatable."""
+    target_dir = tmp_path / "commands"
+    target_dir.mkdir()
+    target = target_dir / mcp_register._SLASH_COMMAND_FILENAME
+    target.write_text(mcp_register._SLASH_COMMAND_MARKER + "\n# old shipped content\n")
+    changed = mcp_register.ensure_slash_command(target_dir=target_dir)
+    # Whether the file is changed depends on whether the shipped source
+    # is reachable in this environment. If it isn't, the function
+    # returns False; if it is, the content gets refreshed. Either way
+    # we must not destroy the marker.
+    if changed:
+        assert mcp_register._SLASH_COMMAND_MARKER in target.read_text()
+
+
 def test_mcp_initialize_response():
     reply = mcp._handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert reply["jsonrpc"] == "2.0"

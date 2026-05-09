@@ -115,7 +115,7 @@ with a trigger keyword pass through with zero token overhead.
 | `rag: <text>` | Same. The colon form is equivalent and predates the no-colon form. |
 | `/rag <text>` | Same, slash-command flavour. |
 | `rag` (alone) | Print index status. If no index exists yet, kick off indexing. **Ends the turn without invoking the model**, so it costs zero tokens. Same for `rag status` and `rag:`. |
-| `/rag` (alone) | Toggle auto-rag mode (see below). Different from `rag` alone, which is a status report. |
+| `/rag-toggle` | Toggle auto-rag mode (see below). Different from bare `rag`, which is a status report. Equivalent shell command: `crh rag toggle`. |
 | `rag@<tag>: <text>` | Federate retrieval across every store carrying `<tag>`. |
 | `rag@all: <text>` | Federate across every registered store. |
 
@@ -130,7 +130,7 @@ Once you've decided "this whole conversation is about my project", you
 can flip auto-rag on and skip the keyword entirely:
 
 ```text
-> /rag
+> /rag-toggle
 auto-rag: ON
 ```
 
@@ -140,9 +140,9 @@ prepends them before Claude sees the prompt. Slash commands (`/something`)
 and very short prompts pass through untouched, so `/help`, `/clear`, and
 "thanks" still work the way you expect.
 
-Toggle it back off the same way: `/rag` once more, or `crh rag off` from
-a shell. State persists across Claude Code sessions in
-`$XDG_STATE_HOME/claude-rag-hook/toggles.json`.
+Toggle it back off the same way: `/rag-toggle` once more, or
+`crh rag off` from a shell. State persists across Claude Code sessions
+in `$XDG_STATE_HOME/claude-rag-hook/toggles.json`.
 
 ```text
 crh rag on        # turn on
@@ -338,8 +338,8 @@ and rewrites its session caches. It **does not touch**
 - A Claude Code update does not delete the `claude-rag` MCP entry
   from `~/.claude.json`. Even if it did, the hook re-registers it
   on the next prompt-submit (idempotent self-install).
-- The `/rag` slash command at `~/.claude/commands/rag.md` is also
-  re-installed on the next prompt-submit if it disappears.
+- The `/rag-toggle` slash command at `~/.claude/commands/rag-toggle.md`
+  is also re-installed on the next prompt-submit if it disappears.
 
 The reverse is also true: an `apt upgrade claude-rag-hook` does not
 touch any of Claude Code's own state. The two tools update on their
@@ -355,10 +355,12 @@ own schedules and don't fight over each other's files.
   file is read by Claude Code for every user on the machine, with the
   highest precedence in the settings layer. Existing entries (other tools,
   admin policies) are preserved; `apt remove` removes only our entry.
-- Ships `/usr/lib/claude-rag-hook/commands/rag.md`, the `/rag` slash
-  command source. The hook self-installs a copy into each user's
-  `~/.claude/commands/rag.md` on first run (idempotent; only writes when
-  the shipped content differs from what's there).
+- Ships `/usr/lib/claude-rag-hook/commands/rag-toggle.md`, the source of
+  the `/rag-toggle` slash command. The hook self-installs a copy into
+  each user's `~/.claude/commands/rag-toggle.md` on first run. Marked
+  with a clearly-attributed comment header so a user who edits the
+  file (and removes the marker) is never overwritten on a future
+  upgrade.
 - The MCP server is wired in per-user via `~/.claude.json`. The hook
   auto-registers it on first run because apt postinst runs as root and
   cannot reliably write to every user's home directory. Idempotent;
@@ -506,11 +508,11 @@ this software you accept that:
   decide to read indexed content even on prompts where you did not type
   `rag`. Turn it off with `crh mcp off` if you only want retrieval to
   fire when you explicitly ask for it.
-- Auto-rag mode (off by default; toggle with `/rag` or `crh rag on`)
-  treats every prompt you submit as if you'd typed `rag <prompt>`.
-  Every turn injects retrieved chunks. Good for project-focused
-  sessions; turn off when you switch contexts so unrelated questions
-  don't pull project content into your prompt.
+- Auto-rag mode (off by default; toggle with `/rag-toggle` or
+  `crh rag on`) treats every prompt you submit as if you'd typed
+  `rag <prompt>`. Every turn injects retrieved chunks. Good for
+  project-focused sessions; turn off when you switch contexts so
+  unrelated questions don't pull project content into your prompt.
 - The hook merges an entry into `/etc/claude-code/managed-settings.json`
   for every user on the machine. If you do not want machine-wide effect,
   remove the package or remove that entry by hand.
