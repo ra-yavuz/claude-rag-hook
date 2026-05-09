@@ -100,7 +100,7 @@
   "description": "A UserPromptSubmit hook for Anthropic's Claude Code that does keyword-triggered local retrieval-augmented generation. apt install wires the hook into Claude Code for every user on the machine. Type 'rag: <question>' inside any project folder; the hook auto-indexes that folder on first use, then retrieves the top-K relevant chunks from a per-folder LanceDB index and prepends them to the prompt as a context block before Claude sees it. Local-first, deterministic, zero token overhead on prompts that do not start with the trigger.",
   "url": "https://ra-yavuz.github.io/claude-rag-hook/",
   "downloadUrl": "https://github.com/ra-yavuz/claude-rag-hook/releases",
-  "softwareVersion": "0.6.0",
+  "softwareVersion": "0.6.1",
   "license": "https://opensource.org/licenses/MIT",
   "author": { "@type": "Person", "name": "Ramazan Yavuz", "url": "https://ra-yavuz.github.io/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -171,7 +171,7 @@
 
 <picture><source srcset="logo.webp" type="image/webp"><img class="brand" src="logo.png" alt="claude-rag-hook logo: angle brackets framing a hook that catches a chunk of text"></picture>
 
-<h1>claude-rag-hook <span class="pill new">v0.6.0</span></h1>
+<h1>claude-rag-hook <span class="pill new">v0.6.1</span></h1>
 <p class="tag">apt install. Type <code>rag &lt;q&gt;</code> in Claude Code. Done.</p>
 <p class="subtag">A <code>UserPromptSubmit</code> hook for Anthropic's <a href="https://docs.claude.com/en/docs/claude-code/overview">Claude Code</a> that does keyword-triggered local RAG. <code>apt install claude-rag-hook</code> wires the hook into Claude Code for every user on the machine. The first <code>rag:</code> inside any project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves the top relevant chunks from a per-folder <a href="https://lancedb.com">LanceDB</a> index and prepends them to the prompt before Claude sees it. Cheap, deterministic, local-first. Prompts that do not start with the trigger pass through with zero token overhead.</p>
 
@@ -409,7 +409,36 @@ crh query "retry policy"    # one-shot retrieval to stdout
 crh ls                      # list registered stores
 crh tag &lt;path&gt; work         # tag for `rag@work: &lt;q&gt;` federation
 crh forget &lt;path&gt;           # delete an index, with confirmation
-crh doctor                  # diagnose: model cache, embedder, hook wiring</code></pre>
+crh doctor                  # diagnose: model cache, embedder, hook wiring
+
+crh rag on|off|toggle|status     # auto-rag mode (every prompt becomes a `rag` query)
+crh mcp on|off|toggle|status     # MCP server (model-decided retrieval)
+
+crh export [path] [-o out]       # bundle the project's index into a portable archive
+crh import &lt;bundle&gt; [path]       # install a bundle from a colleague</code></pre>
+
+<h3 style="margin-top: 24px;">Share an index between machines</h3>
+
+<p>Indexing a large monorepo can take minutes to hours. If a colleague has already indexed it, they can hand you the result so you do not have to pay the cost again. The bundle holds embeddings, chunked text, and the file manifest; no source code (the trust boundary is still the source repo).</p>
+
+<pre><code># Sender. From inside the indexed project:
+cd ~/regurio-monorepo
+crh export
+# -&gt; exported /home/alice/regurio-monorepo to
+#    ./regurio-monorepo.BAAI-bge-small-en-v1.5.v1.20260509-093850.crh.tar.zst (71.4 MB)
+
+# Or pick where the file lands:
+crh export --output ~/share/
+
+# Receiver. apt install claude-rag-hook, cd into their checkout, run import:
+cd ~/regurio-monorepo
+crh import ~/Downloads/regurio-monorepo.BAAI-bge-small-en-v1.5.v1.20260509-093850.crh.tar.zst
+# -&gt; imported into /home/bob/regurio-monorepo/.claude-rag-index
+#    registered in stores.json; type `rag &lt;question&gt;` to use it.</code></pre>
+
+<p>The receiver's <strong>current working directory</strong> is the destination, not anything baked into the bundle (the bundle records the sender's project name for display only). The receiver's checkout can be at a different path, or even renamed; pass an explicit second argument to override. The next <code>rag &lt;q&gt;</code> retrieves from the borrowed index immediately. Embedder compatibility is preserved per-index via <code>meta.yaml</code>: a bundle built with a different embedder than the receiver's local default still works (the retrieval path picks the right embedder per-index), and <code>crh import</code> prints a one-line heads-up when that happens.</p>
+
+<p>Format is <code>tar+zstd</code> when <code>zstd</code> is on PATH, falling back to <code>tar+gzip</code>. <code>crh import</code> refuses to overwrite an existing populated <code>.claude-rag-index/</code> without <code>--force</code>, validates path-traversal entries, and registers the new store in <code>~/.local/state/claude-rag-hook/stores.json</code>.</p>
 
 <p><strong>Auto-refresh daemon</strong> (off by default, opt-in):</p>
 
