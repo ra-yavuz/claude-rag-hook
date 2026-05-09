@@ -70,6 +70,11 @@ SKIP_DIRS = {
     ".gradle", ".idea", ".vscode",
     ".cache", ".turbo",
     ".claude-rag-index", ".hydra-index",
+    # Claude Code per-project state (skills, commands, settings, agents,
+    # session caches). Indexing this would dump skill markdown and
+    # internal config into the LanceDB; never useful retrieval and adds
+    # noise. The hook never reads these for retrieval anyway.
+    ".claude", ".claude-dev",
 }
 
 BINARY_EXTS = {

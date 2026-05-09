@@ -27,7 +27,7 @@ def test_parser_has_known_subcommands():
     assert sub_actions, "parser has no subparsers action"
     choices = sub_actions[0].choices
     for cmd in ("status", "index", "refresh", "query", "forget", "ls",
-                "tag", "untag", "doctor", "auto", "refresher"):
+                "tag", "untag", "doctor", "auto", "refresher", "rag", "mcp"):
         assert cmd in choices, f"missing subcommand {cmd}"
 
 

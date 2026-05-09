@@ -100,7 +100,7 @@
   "description": "A UserPromptSubmit hook for Anthropic's Claude Code that does keyword-triggered local retrieval-augmented generation. apt install wires the hook into Claude Code for every user on the machine. Type 'rag: <question>' inside any project folder; the hook auto-indexes that folder on first use, then retrieves the top-K relevant chunks from a per-folder LanceDB index and prepends them to the prompt as a context block before Claude sees it. Local-first, deterministic, zero token overhead on prompts that do not start with the trigger.",
   "url": "https://ra-yavuz.github.io/claude-rag-hook/",
   "downloadUrl": "https://github.com/ra-yavuz/claude-rag-hook/releases",
-  "softwareVersion": "0.5.0",
+  "softwareVersion": "0.6.0",
   "license": "https://opensource.org/licenses/MIT",
   "author": { "@type": "Person", "name": "Ramazan Yavuz", "url": "https://ra-yavuz.github.io/" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -171,7 +171,7 @@
 
 <picture><source srcset="logo.webp" type="image/webp"><img class="brand" src="logo.png" alt="claude-rag-hook logo: angle brackets framing a hook that catches a chunk of text"></picture>
 
-<h1>claude-rag-hook <span class="pill new">v0.5.0</span></h1>
+<h1>claude-rag-hook <span class="pill new">v0.6.0</span></h1>
 <p class="tag">apt install. Type <code>rag &lt;q&gt;</code> in Claude Code. Done.</p>
 <p class="subtag">A <code>UserPromptSubmit</code> hook for Anthropic's <a href="https://docs.claude.com/en/docs/claude-code/overview">Claude Code</a> that does keyword-triggered local RAG. <code>apt install claude-rag-hook</code> wires the hook into Claude Code for every user on the machine. The first <code>rag:</code> inside any project folder fork-detaches a background indexer; the next <code>rag:</code> retrieves the top relevant chunks from a per-folder <a href="https://lancedb.com">LanceDB</a> index and prepends them to the prompt before Claude sees it. Cheap, deterministic, local-first. Prompts that do not start with the trigger pass through with zero token overhead.</p>
 
@@ -224,15 +224,19 @@
 
 <p>A prompt that does not start with the trigger keyword (<code>rag:</code>, <code>/rag</code>, or <code>rag@&lt;tag&gt;:</code>) falls through to Claude Code unchanged. Zero token overhead on non-RAG turns; no extra tool definitions in every system prompt; no model-decides debugging.</p>
 
-<h2>Why a hook, not an MCP server?</h2>
+<h2>Two surfaces, both on by default</h2>
 
-<p>Three local-RAG-for-Claude-Code projects already exist on GitHub: <a href="https://github.com/shinpr/mcp-local-rag">shinpr/mcp-local-rag</a>, <a href="https://github.com/ItMeDiaTech/rag-cli">ItMeDiaTech/rag-cli</a>, <a href="https://github.com/zilliztech/claude-context">zilliztech/claude-context</a>. All three are MCP-driven (model decides when to retrieve) or full plugins (always inject). None of them implement a simple keyword-triggered hook. The hook shape is genuinely different:</p>
+<p>v0.6 ships both surfaces in one package: the keyword hook for the cheap, deterministic, zero-overhead path; and a bundled MCP server for the model-decides path. Use either, or both. Toggle either off any time.</p>
 
 <ol class="tight">
-  <li><strong>Cheapest option per turn.</strong> No tool-call round trip; no context injection on prompts that do not need RAG; no MCP tool definitions bloating every system prompt.</li>
-  <li><strong>Deterministic.</strong> The user sees the keyword, types it, gets retrieval. No "why didn't the model use the tool that time" debugging.</li>
-  <li><strong>Composable with model-decides RAG.</strong> Power users can install both: keyword-trigger for fast known-need lookups; MCP server for the rare "Claude noticed I might want to look something up" cases.</li>
+  <li><strong>Keyword hook (cheap, deterministic).</strong> Type <code>rag &lt;q&gt;</code>. The hook embeds the query, retrieves chunks from a local LanceDB index, prepends them to your prompt. No tool-call round trip; no context injection on prompts that do not need RAG; no MCP tool definitions bloating every system prompt.</li>
+  <li><strong>MCP server (claude-rag-mcp).</strong> Claude calls <code>rag_search</code> when it judges retrieval would help and the user did not type the keyword (or the keyword retrieval came up thin and Claude wants a follow-up search with a refined query). Saves tokens by letting one Claude turn refine its own retrieval instead of asking you to start over.</li>
+  <li><strong>Auto-rag mode.</strong> Type <code>/rag</code> inside Claude Code (or <code>crh rag on</code> from a shell) and every prompt becomes a <code>rag &lt;prompt&gt;</code> query, no keyword needed. Slash commands and very short prompts pass through untouched. Off by default; toggle once and it sticks across sessions.</li>
 </ol>
+
+<p>The hook self-installs the MCP server entry into the user's <code>~/.claude.json</code> on first run (idempotent), and self-installs the <code>/rag</code> slash command into <code>~/.claude/commands/rag.md</code>. apt postinst handles the system-wide hook wiring; per-user pieces happen lazily on the next hook invocation, which is the only time we have ambient access to a user's home directory.</p>
+
+<p>How the original "no MCP" stance from v0.5 evolved: the keyword hook is still the primary, cheapest path. The MCP server is opt-out (default on) because the same retrieval index can answer one extra question Claude sometimes notices it needs without forcing the user to start a new turn. That saves tokens. Compose with model-decides peers like <a href="https://github.com/shinpr/mcp-local-rag">shinpr/mcp-local-rag</a>, <a href="https://github.com/ItMeDiaTech/rag-cli">ItMeDiaTech/rag-cli</a>, or <a href="https://github.com/zilliztech/claude-context">zilliztech/claude-context</a>: they each carry their own indexes and tool definitions, claude-rag-hook adds three small ones (<code>rag_search</code>, <code>rag_status</code>, <code>rag_list_stores</code>) on top of the keyword path.</p>
 
 <h2>How indexing handles changes over time</h2>
 
@@ -265,7 +269,8 @@
     <tr><td><code>rag &lt;text&gt;</code></td><td>Retrieve from the project root's index. Default form. Auto-indexes on first use.</td></tr>
     <tr><td><code>rag: &lt;text&gt;</code></td><td>Same. The colon form is equivalent and predates the no-colon form.</td></tr>
     <tr><td><code>/rag &lt;text&gt;</code></td><td>Same, slash-command flavour.</td></tr>
-    <tr><td><code>rag</code> (alone)</td><td>Print index status. If no index exists yet, kick off indexing. <strong>Ends the turn without invoking the model</strong> (zero tokens). Same for <code>/rag</code>, <code>rag status</code>, and <code>rag:</code>.</td></tr>
+    <tr><td><code>rag</code> (alone)</td><td>Print index status. If no index exists yet, kick off indexing. <strong>Ends the turn without invoking the model</strong> (zero tokens). Same for <code>rag status</code> and <code>rag:</code>.</td></tr>
+    <tr><td><code>/rag</code> (alone)</td><td>Toggle auto-rag mode (every prompt becomes a <code>rag</code> query, no keyword needed). Different from <code>rag</code> alone, which is the status report.</td></tr>
     <tr><td><code>rag@&lt;tag&gt;: &lt;text&gt;</code></td><td>Federate retrieval across every store carrying <code>&lt;tag&gt;</code>. Bypasses auto-index; you have to have indexed the stores.</td></tr>
     <tr><td><code>rag@all: &lt;text&gt;</code></td><td>Federate across every registered store.</td></tr>
   </tbody>
@@ -274,6 +279,17 @@
 <p>The bare <code>rag</code> form is a CLI command, not a question for Claude. The hook returns a <code>decision: "block"</code> envelope so the model is not invoked: the user sees the status text and the turn ends with zero tokens spent. If no index exists yet, the same bare <code>rag</code> also fork-detaches the indexer.</p>
 
 <p>The no-colon form (<code>lax_trigger</code>) is on by default. Set <code>lax_trigger: false</code> in <code>~/.config/claude-rag-hook/config.yaml</code> to require the colon if you hit a false positive.</p>
+
+<h2>Auto-rag mode and MCP toggles</h2>
+
+<p>Two persistent toggles live in <code>$XDG_STATE_HOME/claude-rag-hook/toggles.json</code>:</p>
+
+<ul class="tight">
+  <li><strong>auto-rag</strong> (default off): every prompt becomes a <code>rag</code> query, no keyword needed. Slash commands and very short prompts pass through untouched. Toggle inside Claude Code with <code>/rag</code>, or from a shell with <code>crh rag on|off|toggle|status</code>.</li>
+  <li><strong>mcp</strong> (default on): the bundled MCP server is wired into <code>~/.claude.json</code> so Claude can call <code>rag_search</code> when it judges retrieval would help. Turn off with <code>crh mcp off</code>; the entry stays in <code>~/.claude.json</code> with a <code>CLAUDE_RAG_MCP_DISABLED=1</code> env block, so the toggle is fully reversible from the same place. Turn on with <code>crh mcp on</code>.</li>
+</ul>
+
+<p>The MCP server exposes three tools: <code>rag_search(query, scope?, top_k?, tag?)</code> for retrieval, <code>rag_status(scope?)</code> for index health, <code>rag_list_stores()</code> for an inventory of registered project indexes. The tool descriptions tell Claude when to call them and when to skip the round trip.</p>
 
 <h2>What you actually get</h2>
 
@@ -315,8 +331,28 @@
   </div>
 
   <div class="card">
-    <h3 style="margin-top:0">hydra-llm interop</h3>
-    <p>If you already run <a href="https://ra-yavuz.github.io/hydra-llm/">hydra-llm</a> for local LLMs and RAG, the hook reuses its embedder catalog and reads its <code>.hydra-index/</code> stores transparently. No re-indexing.</p>
+    <h3 style="margin-top:0">Optional hydra-llm bridges</h3>
+    <p>Standalone is the default. Optional opt-in: reuse a <a href="https://ra-yavuz.github.io/hydra-llm/">hydra-llm</a> embedder so the two tools stop duplicating ~80 MB of ONNX cache, and read existing <code>.hydra-index/</code> stores. Neither tool triggers the other; each keeps its own indexes.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Share indexes (export / import)</h3>
+    <p><code>crh export</code> bundles a project's index into a portable <code>.crh.tar.zst</code>. A colleague <code>cd</code>s into their checkout, runs <code>crh import &lt;file&gt;</code>, and skips the indexing cost: the next <code>rag &lt;q&gt;</code> retrieves immediately. Bundle contains embeddings, chunked text, and file manifest only; no source code.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">MCP server (model-decided retrieval)</h3>
+    <p>v0.6 ships a stdio MCP server alongside the keyword hook. Claude calls <code>rag_search</code> when it judges retrieval would help and the user did not type the keyword (or the keyword retrieval was thin). On by default; toggle with <code>crh mcp off</code>.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Auto-rag mode (no keyword needed)</h3>
+    <p>Type <code>/rag</code> inside Claude Code to flip auto-rag on. Every subsequent prompt becomes a <code>rag &lt;prompt&gt;</code> query, no keyword required. Slash commands and very short prompts pass through untouched. Persistent across sessions.</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Survives Claude Code updates</h3>
+    <p>Claude Code's self-update never touches <code>/etc/claude-code/managed-settings.json</code> or <code>~/.claude.json</code>, so the hook entry and MCP server entry stay wired. The hook also re-registers itself on every run as a belt-and-braces idempotent recovery.</p>
   </div>
 
 </div>

@@ -42,8 +42,10 @@ from . import (
     ls as ls_cmd,
     query as query_cmd,
     refresher as refresher_cmd,
+    share as share_cmd,
     status as status_cmd,
     tag as tag_cmd,
+    toggle as toggle_cmd,
 )
 
 
@@ -185,6 +187,88 @@ def _build_parser() -> argparse.ArgumentParser:
     rfst = rfsub.add_parser("status", help="systemctl --user status + watched-projects summary.")
     rfst.add_argument("--json", action="store_true")
     rfst.set_defaults(func=refresher_cmd.run_status)
+
+    # export / import (share an index with a colleague)
+    ex = sub.add_parser(
+        "export",
+        help="Bundle the cwd's .claude-rag-index/ into a portable archive.",
+        description=(
+            "Pack the cwd's .claude-rag-index/ (LanceDB table, files manifest, "
+            "embedder meta) into a single archive a colleague can install with "
+            "`crh import`. Default output is the current directory; pass "
+            "`--output` to choose a different file or directory. Uses "
+            "tar+zstd if available (smaller files); falls back to tar+gzip."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ex.add_argument("path", nargs="?", default=None,
+                    help="Project folder whose index to export (default: cwd).")
+    ex.add_argument("--output", "-o", default=None,
+                    help="Output file or directory. Default: cwd, auto-named "
+                         "<project>.<embedder>.v<schema>.<timestamp>.crh.tar.zst")
+    ex.add_argument("--force", "-f", action="store_true",
+                    help="Overwrite output if it already exists.")
+    ex.set_defaults(func=share_cmd.run_export)
+
+    im = sub.add_parser(
+        "import",
+        help="Install a `crh export` bundle into a project folder.",
+        description=(
+            "Unpack a bundle produced by `crh export` into the cwd's "
+            ".claude-rag-index/. Refuses to overwrite an existing populated "
+            "index without `--force`. After unpacking, registers the store "
+            "in stores.json so `crh ls` and tag-federated queries see it."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    im.add_argument("bundle", help="Path to the .crh.tar.zst (or .tar.gz) file.")
+    im.add_argument("path", nargs="?", default=None,
+                    help="Project folder to install into (default: cwd).")
+    im.add_argument("--force", "-f", action="store_true",
+                    help="Overwrite an existing .claude-rag-index/ in the target.")
+    im.set_defaults(func=share_cmd.run_import)
+
+    # rag (auto-rag toggle)
+    rg = sub.add_parser(
+        "rag",
+        help="Toggle auto-rag mode (every prompt becomes a `rag` query, no keyword needed).",
+        description=(
+            "When auto-rag is on, claude-rag-hook treats every prompt you "
+            "submit in Claude Code as if you had typed `rag <prompt>`: it "
+            "retrieves chunks from the project index and prepends them "
+            "before Claude sees the prompt. Slash commands and very short "
+            "prompts are still passed through untouched.\n\n"
+            "Inside Claude Code itself, `/rag` does the same toggle."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    rg.add_argument(
+        "action", nargs="?", default="toggle",
+        choices=["on", "off", "toggle", "status"],
+        help="Action (default: toggle).",
+    )
+    rg.set_defaults(func=toggle_cmd.run_rag)
+
+    # mcp (MCP server toggle)
+    mc = sub.add_parser(
+        "mcp",
+        help="Toggle the claude-rag MCP server (model-decided retrieval inside Claude Code).",
+        description=(
+            "When mcp is on, the claude-rag MCP server is registered in "
+            "the user's ~/.claude.json and Claude Code can call "
+            "`rag_search`, `rag_status`, and `rag_list_stores` when it "
+            "judges that retrieval would help. Default on; turn off if "
+            "you do not want Claude to be able to retrieve from the "
+            "index on its own (only the keyword hook would remain)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    mc.add_argument(
+        "action", nargs="?", default="toggle",
+        choices=["on", "off", "toggle", "status"],
+        help="Action (default: toggle).",
+    )
+    mc.set_defaults(func=toggle_cmd.run_mcp)
 
     return p
 

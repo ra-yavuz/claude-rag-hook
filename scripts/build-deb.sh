@@ -28,13 +28,20 @@ mkdir -p "$PKG_DIR/DEBIAN" \
          "$PKG_DIR/usr/bin" \
          "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/embedder" \
          "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/cli" \
+         "$PKG_DIR/usr/lib/claude-rag-hook/commands" \
          "$PKG_DIR/usr/lib/systemd/user" \
          "$PKG_DIR/usr/share/doc/claude-rag-hook"
 
 install -m 0755 "$ROOT/bin/claude-rag-hook-hook"  "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-hook"
 install -m 0755 "$ROOT/bin/claude-rag-hook-admin" "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-admin"
 install -m 0755 "$ROOT/bin/claude-rag-hookd"      "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hookd"
+install -m 0755 "$ROOT/bin/claude-rag-mcp"        "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-mcp"
 install -m 0755 "$ROOT/bin/crh"                   "$PKG_DIR/usr/bin/crh"
+
+# /rag slash command markdown shipped under /usr/lib/claude-rag-hook/commands/.
+# The hook self-installs a copy into each user's ~/.claude/commands/ on
+# first invocation (idempotent; only writes when content differs).
+install -m 0644 "$ROOT/commands/rag.md" "$PKG_DIR/usr/lib/claude-rag-hook/commands/rag.md"
 
 # systemd user unit for the auto-refresh daemon. Off by default;
 # users opt in with `crh refresher start` (which is `systemctl --user

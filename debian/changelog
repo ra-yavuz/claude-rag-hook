@@ -1,3 +1,36 @@
+claude-rag-hook (0.6.0-1) unstable; urgency=low
+
+  * New: bundled MCP server (claude-rag-mcp). Companion surface to
+    the keyword-triggered hook. Claude Code can now call rag_search,
+    rag_status, and rag_list_stores when it judges that retrieval
+    would help and the user did not type the keyword (or the keyword
+    retrieval returned thin chunks and Claude wants a follow-up
+    search). Saves tokens by skipping retrieval when not needed and
+    by letting one Claude turn refine its own search rather than
+    asking the user to start over. The MCP server is on by default;
+    toggle off any time with `crh mcp off`.
+  * The MCP server is auto-registered into the per-user
+    ~/.claude.json on first hook invocation (idempotent). Same shape
+    as `claude mcp add --scope user` would produce. apt postinst
+    cannot reliably touch every user's home directory, so the hook
+    handles registration when it next runs as the target user. Turn
+    off with `crh mcp off` (flips a CLAUDE_RAG_MCP_DISABLED=1 env
+    var on the entry; the entry stays present so the toggle is
+    reversible from the same place).
+  * New: `/rag` slash command. Toggles auto-rag mode from inside
+    Claude Code itself. When auto-rag is on, every prompt the user
+    submits is treated as if they had typed `rag <prompt>`: the hook
+    retrieves relevant chunks and prepends them. Slash commands and
+    very short prompts are still passed through. Slash command
+    markdown is shipped at /usr/lib/claude-rag-hook/commands/rag.md
+    and self-installs to ~/.claude/commands/rag.md on first hook
+    run. Equivalent shell command: `crh rag toggle`.
+  * New: `crh rag` and `crh mcp` subcommands. Each accepts
+    on / off / toggle / status. Persistent state in
+    $XDG_STATE_HOME/claude-rag-hook/toggles.json.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Sat, 09 May 2026 12:00:00 +0000
+
 claude-rag-hook (0.5.0-1) unstable; urgency=low
 
   * Default embedder switched from nomic-ai/nomic-embed-text-v1.5

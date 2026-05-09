@@ -62,14 +62,20 @@ def _embedder_for_index(index_dir: Path, cfg_data: dict[str, Any]) -> Embedder:
 
 
 def _embed_query_via_daemon_or_inline(text: str, embedder: Embedder, daemon_enabled: bool) -> list[float]:
-    """Use the warm daemon if it is alive (or can be started), else embed inline."""
+    """Use the warm daemon if it is alive (or can be started), else embed inline.
+
+    Daemon-startup failures (no spawn permission, wrong path, missing
+    deps, 5s startup timeout, unwritable cache dir) must NOT make the
+    whole retrieval go silent: we just fall back to inline embedding.
+    The daemon is a latency optimisation, not a correctness path.
+    """
     if not daemon_enabled:
         return embedder.embed_query(text)
     try:
         if not daemon_mod.is_alive():
             try:
                 daemon_mod.spawn(detach=True)
-            except OSError:
+            except (OSError, RuntimeError):
                 return embedder.embed_query(text)
         resp = daemon_mod.call("embed_query", {"text": text}, timeout=30.0)
         if resp.get("ok"):
@@ -77,7 +83,7 @@ def _embed_query_via_daemon_or_inline(text: str, embedder: Embedder, daemon_enab
             if v:
                 return [float(x) for x in v]
         return embedder.embed_query(text)
-    except OSError:
+    except (OSError, RuntimeError):
         return embedder.embed_query(text)
 
 

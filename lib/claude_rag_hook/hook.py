@@ -55,10 +55,12 @@ from pathlib import Path
 from . import (
     auto_index,
     config as config_mod,
+    mcp_register,
     paths,
     progress as progress_mod,
     retrieval,
     runner,
+    toggles,
     trigger,
 )
 
@@ -134,10 +136,34 @@ def run(stdin_text: str, cwd: Path | None = None) -> int:
     if cwd is None:
         cwd = Path(env_cwd) if env_cwd else Path.cwd()
 
+    # Idempotently sync the MCP server entry in ~/.claude.json. Cheap;
+    # only writes the file when state would change. Honours the user
+    # toggle so `crh mcp off` flips the disabled flag rather than
+    # ripping the entry out and adding it back next turn.
+    try:
+        mcp_register.ensure_registered(disabled=not toggles.mcp_enabled())
+    except Exception:  # noqa: BLE001
+        # Per fail-soft contract: never break the user's prompt because
+        # the registration helper hit an unexpected file shape.
+        pass
+    try:
+        mcp_register.ensure_slash_command()
+    except Exception:  # noqa: BLE001
+        pass
+
     cfg = config_mod.load()
     triggers = config_mod.triggers(cfg)
     lax = bool(cfg.get("lax_trigger", default=False))
     match = trigger.parse(prompt, triggers, lax=lax)
+
+    # Auto-rag: when the user has toggled it on, every prompt that did
+    # NOT already match a trigger and is not a slash command is treated
+    # as if they had typed `rag <prompt>`. The point is to spare them
+    # the keyword once they have decided "this whole conversation is
+    # about my project". Slash commands and bare-empty prompts are
+    # never auto-promoted; the user clearly meant something else.
+    if match is None and toggles.auto_rag_enabled() and _eligible_for_auto_rag(prompt):
+        match = trigger.TriggerMatch(query=prompt.strip(), tag=None)
 
     if match is None:
         # Not a RAG turn. If a background index job is running for this
@@ -246,6 +272,27 @@ def run(stdin_text: str, cwd: Path | None = None) -> int:
     )
     sys.stdout.flush()
     return 0
+
+
+def _eligible_for_auto_rag(prompt: str) -> bool:
+    """Decide whether a non-trigger prompt should be auto-promoted to a
+    `rag` query when the auto_rag toggle is on.
+
+    Skip slash commands (the user is invoking a built-in or custom
+    skill), empty prompts, and very short prompts that are almost
+    certainly conversational ("ok", "thanks"). Everything else gets
+    retrieval. Cheap-to-compute heuristic, deliberately permissive:
+    the worst case of a false positive is one extra retrieval round
+    trip.
+    """
+    s = prompt.strip()
+    if not s:
+        return False
+    if s.startswith("/"):
+        return False
+    if len(s) < 4:
+        return False
+    return True
 
 
 def _index_is_populated(index_dir: Path) -> bool:
