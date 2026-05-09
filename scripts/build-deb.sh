@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Build a .deb without debhelper.
+# Build the v0.7.0 transitional .deb for claude-rag-hook.
+#
+# v0.7 is a metapackage shim: it carries no binaries, no library code,
+# and no hook wiring. Its only purpose is to depend on hydra-rag-hooks
+# (the renamed successor) so that an existing claude-rag-hook install
+# upgraded via `apt update` automatically pulls the new package, and
+# then prints a one-line note telling the user about the rename.
 #
 # Layout shipped:
-#   /usr/bin/crh                                     (operator-facing CLI)
-#   /usr/lib/claude-rag-hook/claude-rag-hook-hook    (Claude Code invokes)
-#   /usr/lib/claude-rag-hook/claude-rag-hook-admin   (postinst/postrm only)
-#   /usr/lib/claude-rag-hook/claude-rag-hookd        (auto-spawned daemon)
-#   /usr/lib/claude-rag-hook/claude_rag_hook/        (Python package)
-#   /usr/lib/systemd/user/claude-rag-hook-refresher.service (auto-refresh daemon, off by default)
-#   /usr/share/doc/claude-rag-hook/{README.md,DESIGN.md,copyright}
+#   /usr/share/doc/claude-rag-hook/{README.md,copyright,RENAME.md}
 #
-# The hook is wired into Claude Code via /etc/claude-code/managed-settings.json
-# by the postinst (zero-touch). The CLI (`crh`) is for operator tasks:
-# watch indexing progress, manage tags, run the auto-refresh daemon.
+# Postinst prints the rename note. Postrm is empty (apt remove just
+# leaves the dependency satisfied; the user can also `apt remove
+# hydra-rag-hooks` separately if they really want to uninstall).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -25,41 +25,35 @@ DEB_OUT="$ROOT/dist/claude-rag-hook_${DEB_VERSION}_all.deb"
 
 rm -rf "$PKG_DIR" "$DEB_OUT"
 mkdir -p "$PKG_DIR/DEBIAN" \
-         "$PKG_DIR/usr/bin" \
-         "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/embedder" \
-         "$PKG_DIR/usr/lib/claude-rag-hook/claude_rag_hook/cli" \
-         "$PKG_DIR/usr/lib/claude-rag-hook/commands" \
-         "$PKG_DIR/usr/lib/systemd/user" \
          "$PKG_DIR/usr/share/doc/claude-rag-hook"
 
-install -m 0755 "$ROOT/bin/claude-rag-hook-hook"  "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-hook"
-install -m 0755 "$ROOT/bin/claude-rag-hook-admin" "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hook-admin"
-install -m 0755 "$ROOT/bin/claude-rag-hookd"      "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-hookd"
-install -m 0755 "$ROOT/bin/claude-rag-mcp"        "$PKG_DIR/usr/lib/claude-rag-hook/claude-rag-mcp"
-install -m 0755 "$ROOT/bin/crh"                   "$PKG_DIR/usr/bin/crh"
+install -m 0644 "$ROOT/README.md" "$PKG_DIR/usr/share/doc/claude-rag-hook/README.md"
+install -m 0644 "$ROOT/LICENSE"   "$PKG_DIR/usr/share/doc/claude-rag-hook/copyright"
 
-# /rag slash command markdown shipped under /usr/lib/claude-rag-hook/commands/.
-# The hook self-installs a copy into each user's ~/.claude/commands/ on
-# first invocation (idempotent; only writes when content differs).
-install -m 0644 "$ROOT/commands/rag-toggle.md" "$PKG_DIR/usr/lib/claude-rag-hook/commands/rag-toggle.md"
+# RENAME notice shipped alongside the docs. Any user who looks at
+# /usr/share/doc/claude-rag-hook/ sees what happened and where to look.
+cat > "$PKG_DIR/usr/share/doc/claude-rag-hook/RENAME.md" <<'EOF'
+# claude-rag-hook has been renamed to hydra-rag-hooks
 
-# systemd user unit for the auto-refresh daemon. Off by default;
-# users opt in with `crh refresher start` (which is `systemctl --user
-# enable --now`). Per-project opt-in is a marker file inside the
-# project's index dir; see `crh auto on`.
-install -m 0644 "$ROOT/debian/claude-rag-hook-refresher.service" \
-    "$PKG_DIR/usr/lib/systemd/user/claude-rag-hook-refresher.service"
+The claude-rag-hook v0.6.x feature set has been folded into a new
+package, hydra-rag-hooks, which now supports both Anthropic's Claude
+Code AND OpenAI's Codex CLI from a single apt install. v0.7.0 of
+claude-rag-hook is a transitional metapackage that depends on
+hydra-rag-hooks; installing or upgrading it automatically pulls the
+new package.
 
-# Copy the package tree, excluding bytecode caches (which accumulate
-# stale .pyc files for renamed/removed modules and would ship them).
-( cd "$ROOT/lib" && find claude_rag_hook -type f -name '*.py' -print0 | \
-    xargs -0 -I {} install -D -m 0644 "{}" "$PKG_DIR/usr/lib/claude-rag-hook/{}" )
+What you should do:
 
-install -m 0644 "$ROOT/README.md"  "$PKG_DIR/usr/share/doc/claude-rag-hook/README.md"
-install -m 0644 "$ROOT/DESIGN.md"  "$PKG_DIR/usr/share/doc/claude-rag-hook/DESIGN.md"
-install -m 0644 "$ROOT/LICENSE"    "$PKG_DIR/usr/share/doc/claude-rag-hook/copyright"
-install -m 0755 "$ROOT/debian/postinst" "$PKG_DIR/DEBIAN/postinst"
-install -m 0755 "$ROOT/debian/postrm"   "$PKG_DIR/DEBIAN/postrm"
+  1. Verify the new package is installed:
+       apt list --installed | grep hydra-rag-hooks
+  2. Optionally remove this transitional name:
+       sudo apt remove claude-rag-hook
+     (your hooks, indexes, and config keep working: hydra-rag-hooks
+     handles all of that, and your existing .claude-rag-index/
+     folders are auto-renamed in place on first run.)
+  3. New project page: https://ra-yavuz.github.io/hydra-rag-hooks/
+  4. New repo: https://github.com/ra-yavuz/hydra-rag-hooks
+EOF
 
 cat > "$PKG_DIR/DEBIAN/control" <<EOF
 Package: claude-rag-hook
@@ -67,44 +61,49 @@ Version: ${DEB_VERSION}
 Section: utils
 Priority: optional
 Architecture: all
-Depends: python3 (>= 3.10), python3-yaml, python3-numpy, python3-pathspec
-Recommends: python3-pip
-Suggests: hydra-llm
+Depends: hydra-rag-hooks (>= 0.1.0)
 Maintainer: Ramazan Yavuz <yavuzramazan1994@gmail.com>
-Homepage: https://ra-yavuz.github.io/claude-rag-hook/
-Description: keyword-triggered local RAG inside Claude Code
- Type "rag: <question>" inside Claude Code; this hook embeds the query,
- retrieves the top relevant chunks from a local LanceDB index of your
- project folder, and prepends them to the prompt before Claude sees it.
- Local-first; the model never has to "decide" whether to retrieve, so
- there is no MCP round trip and no per-prompt token overhead on prompts
- that do not start with the trigger.
+Homepage: https://ra-yavuz.github.io/hydra-rag-hooks/
+Description: Transitional package - renamed to hydra-rag-hooks
+ claude-rag-hook has been renamed to hydra-rag-hooks. The new package
+ supports both Claude Code AND OpenAI's Codex CLI from one apt install,
+ with the same hooks, retrieval pipeline, and crh operator CLI.
  .
- Auto-indexing on first use: the first "rag:" inside a project folder
- (one with a .git, pyproject.toml, package.json, or similar marker)
- fork-detaches a background indexer; the next "rag:" retrieves
- normally. Hard refusals on \$HOME, /etc, /var, etc., and a 20k-file /
- 500MB cap protect against accidental indexing of large or sensitive
- trees.
+ This v0.7.0 transitional package depends on hydra-rag-hooks so that
+ \`apt update\` installs the new package automatically. After
+ installation you can run \`apt remove claude-rag-hook\` to drop
+ this transitional name; hydra-rag-hooks remains installed and
+ handles the same workload, including auto-migration of existing
+ .claude-rag-index/ folders to the unified .hydra-index/ name.
  .
- Wires itself into Claude Code on apt install by merging an entry into
- /etc/claude-code/managed-settings.json. Every user on the machine
- picks up the hook on their next Claude Code session; no per-user
- setup. Removing the package removes the entry.
- .
- The fastembed embedder (the default) is not packaged for Debian; it
- is fetched on first use via pip if missing. To pre-install:
-   pip install --user fastembed lancedb pyarrow
- Or pick a different embedder backend (OpenAI-compatible local server,
- hydra-llm interop) in ~/.config/claude-rag-hook/config.yaml.
- .
- DISCLAIMER: provided AS IS, no warranty. Reads files inside any folder
- it indexes and stores chunked text plus embeddings of those files at
- <folder>/.claude-rag-index/. Retrieved chunks are sent to Anthropic
- when "rag:" fires. The author is not liable for any damage to data,
- hardware, system, or for the content of model output. Audit what you
- index. See /usr/share/doc/claude-rag-hook/README.md.
+ See https://ra-yavuz.github.io/hydra-rag-hooks/ for the new project.
 EOF
+
+cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+case "$1" in
+    configure)
+        cat <<NOTE
+
+claude-rag-hook has been renamed to hydra-rag-hooks (now installed as
+a dependency of this transitional package). The new package adds
+OpenAI Codex CLI support alongside Claude Code, and migrates your
+existing config and indexes in place on next use.
+
+You can drop this transitional name when you are ready:
+    sudo apt remove claude-rag-hook
+
+See: https://ra-yavuz.github.io/hydra-rag-hooks/
+
+NOTE
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+exit 0
+EOF
+chmod 0755 "$PKG_DIR/DEBIAN/postinst"
 
 : > "$PKG_DIR/DEBIAN/conffiles"
 

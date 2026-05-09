@@ -1,5 +1,17 @@
 # claude-rag-hook
 
+> **This project has been renamed to [hydra-rag-hooks](https://github.com/ra-yavuz/hydra-rag-hooks).**
+>
+> v0.7.0 of `claude-rag-hook` is a transitional apt package that depends on
+> `hydra-rag-hooks` and prints a one-line note. The new package adds OpenAI
+> Codex CLI support alongside Claude Code from one apt install, and
+> auto-migrates your existing `.claude-rag-index/` folders to the unified
+> `.hydra-index/` name on first run (no re-indexing).
+>
+> Read on for the v0.6 docs (still accurate for what the underlying tool
+> does), or jump straight to the [new project page](https://ra-yavuz.github.io/hydra-rag-hooks/).
+
+
 > **Type `rag <question>` in Claude Code. Get a retrieval-augmented answer.**
 >
 > A `UserPromptSubmit` hook for Claude Code that does keyword-triggered local

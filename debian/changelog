@@ -1,3 +1,23 @@
+claude-rag-hook (0.7.0-1) unstable; urgency=medium
+
+  * This package has been renamed to hydra-rag-hooks. v0.7.0 is a
+    transitional shim that depends on the new package and prints a
+    one-line note on install. apt update will pull in
+    hydra-rag-hooks automatically; afterwards you can run
+    `apt remove claude-rag-hook` to drop this transitional name.
+  * The new package supports both Claude Code AND OpenAI's Codex
+    CLI from one apt install. Same UserPromptSubmit hook design,
+    same retrieval pipeline, same `crh` operator CLI. Existing
+    .claude-rag-index/ folders are auto-renamed to .hydra-index/
+    on first hook run, with embeddings preserved byte-for-byte.
+    Per-user state at ~/.config/claude-rag-hook/ etc. is migrated
+    in place to the unified ~/.config/hydra-llm/rag-hooks/ family
+    location. No re-indexing, no manual migration steps.
+  * See https://ra-yavuz.github.io/hydra-rag-hooks/ for the new
+    project's README and changelog.
+
+ -- Ramazan Yavuz <yavuzramazan1994@gmail.com>  Sat, 09 May 2026 14:30:00 +0000
+
 claude-rag-hook (0.6.1-1) unstable; urgency=high
 
   * Critical fix: refuse to overwrite ~/.claude.json when it cannot be
